@@ -1,6 +1,6 @@
 # ZCode 接管检查点
 
-更新时间：2026-10-03（Asia/Shanghai）。状态：设置页这一轮已完成；正在上传 GitHub 私有仓库。
+更新时间：2026-10-03（Asia/Shanghai）。状态：设置页这一轮已完成；已上传并核验 GitHub 私有仓库。
 
 ## 目标和授权
 
@@ -33,12 +33,12 @@
 
 当前未修改 ZCode 的任务数据库或会话历史，避免它的待办与应用内部状态冲突。完整 Harness 能力差距见 `docs/HARNESS_PARITY.md`，供后续继续。
 
-## GitHub 上传准备（本会话）
+## GitHub 上传结果（本会话）
 
 - 用户明确要求上传 GitHub 私有仓库；目标为 `2395115107-stack/my-agent`，分支 `main`，仓库地址 `https://github.com/2395115107-stack/my-agent`。
 - 2026-10-03 20:30（Asia/Shanghai）重新执行 `mvn test`：41 个 Java 源文件编译成功，7 个测试全部通过（0 失败、0 错误、0 跳过）。保留了期间 ZCode 对成员恢复、团队调度和客户端的最新修改。
 - `.gitignore` 排除 `target/`、`.handoff-backups/`、`docs/evidence/`、运行日志和 `.env` 本机配置；便携工具、PostgreSQL/Redis 数据均在项目目录之外，不上传。
-- Git 身份只配置在本项目，使用 GitHub noreply 邮箱；上传后需核验远端确为 PRIVATE，且远端 `main` 与本地提交一致。
+- Git 身份只配置在本项目，使用 GitHub noreply 邮箱。已创建仓库并推送；GitHub 查询确认 `isPrivate=true`、`visibility=PRIVATE`、默认分支 `main`。源码提交 `401f5b9d0ad4578ac775e368fbe403d0b303e37c` 已核验与远端 `main` 一致；本段交接记录随后单独提交并推送。
 
 ## 2026-10-03 晚(第二棒 ZCode)续记
 
