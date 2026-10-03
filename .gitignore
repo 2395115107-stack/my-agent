@@ -1,0 +1,9 @@
+target/
+.handoff-backups/
+docs/evidence/
+*.log
+.env
+.env.*
+!.env.example
+*.iml
+.idea/

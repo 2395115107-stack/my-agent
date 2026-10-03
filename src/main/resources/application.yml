@@ -1,0 +1,42 @@
+server:
+  port: 8070
+
+spring:
+  application:
+    name: my-agent
+  datasource:
+    url: jdbc:postgresql://${PG_HOST:localhost}:${PG_PORT:5432}/${PG_DB:myagent}
+    username: ${PG_USER:postgres}
+    password: ${PG_PASSWORD:postgres}
+    hikari:
+      maximum-pool-size: 20
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+mybatis-flex:
+  global-config:
+    # 驼峰 -> snake_case
+    normal-value-of-logic-delete: null
+  configuration:
+    map-underscore-to-camel-case: true
+
+myagent:
+  model:
+    # OpenAI 兼容协议,任意厂商:DeepSeek / Qwen(DashScope compatible-mode) / GLM / vLLM...
+    base-url: ${LLM_BASE_URL:https://api.deepseek.com}
+    api-key: ${LLM_API_KEY:sk-demo}
+    model: ${LLM_MODEL:deepseek-chat}
+    temperature: 0.7
+    # LLM_MOCK=true:脚本化 Mock 模型,无 Key 跑通「拆解-分配-执行-汇报」全链路(演示/联调)
+    mock: ${LLM_MOCK:false}
+  team:
+    # 调度对账循环(兜底;主路径是信箱写入事件驱动)
+    reconcile-interval-ms: 2000
+    # 成员 turn 租约:超时视为僵死,回收重投(借鉴 AionUi lease_expires_in_ms)
+    lease-seconds: 600
+    # 信箱投递重试上限,超过后槽位暂停并通知 Leader
+    delivery-max-attempts: 3
+    # 单成员单次唤醒最多注入的未读消息数
+    wake-batch-size: 50

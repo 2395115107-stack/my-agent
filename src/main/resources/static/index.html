@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>my-agent · 调度台</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%23232324'/><text x='16' y='22' font-size='15' text-anchor='middle' fill='%233B82F6' font-family='Montserrat,sans-serif' font-weight='600'>MA</text></svg>">
+<link rel="stylesheet" href="css/app.css?v=8">
+</head>
+<body>
+
+<div class="frame">
+
+  <!-- 侧栏:品牌 / 新对话 / 团队 / 成员会话 / 底部成员管理 -->
+  <aside class="sidebar" id="sidebar">
+    <div class="side-head">
+      <div class="brand">
+        <span class="brand-mark">MA</span>
+        <span class="brand-text"><b>my-agent</b><i>调度台</i></span>
+      </div>
+      <button class="icon-btn" id="collapseBtn" title="收起侧栏" aria-label="收起侧栏">⟨</button>
+    </div>
+
+    <button class="new-chat" id="newChatBtn" type="button">
+      <span class="plus">＋</span><span class="new-chat-text">新对话</span>
+    </button>
+
+    <div class="side-scroll">
+      <div class="side-section">
+        <div class="side-label-row">
+          <span class="side-label">团队</span>
+          <button class="mini-btn" id="btnNewTeam" type="button">建团队</button>
+        </div>
+        <div id="teamList" class="team-list"></div>
+      </div>
+
+      <div class="side-section grow">
+        <div class="side-label-row"><span class="side-label">成员会话</span></div>
+        <ul id="rosterList" class="session-list" aria-live="polite"></ul>
+        <div id="rosterEmpty" class="side-empty hidden">还没有成员。点下方「加入成员」,或建一个团队让 Leader 入列。</div>
+      </div>
+    </div>
+
+    <button class="side-foot" id="btnSettings" type="button">
+      <span class="plus">⚙</span><span class="side-foot-text">设置</span>
+    </button>
+    <button class="side-foot" id="btnAddMember" type="button">
+      <span class="plus">＋</span><span class="side-foot-text">加入成员</span>
+    </button>
+  </aside>
+
+  <button class="rail-expand" id="expandBtn" type="button" title="展开侧栏" aria-label="展开侧栏">⟩</button>
+
+  <!-- 中栏:会话 -->
+  <main class="center">
+    <header class="conv-head">
+      <div class="peer">
+        <span class="peer-dot" id="peerDot"></span>
+        <div class="peer-meta">
+          <div class="peer-name" id="peerName">未选择成员</div>
+          <div class="peer-sub mono" id="peerSn">从左侧选择一个成员开始</div>
+        </div>
+      </div>
+      <div class="head-actions">
+        <button class="tool-btn resume hidden" id="btnResume" type="button" title="恢复该成员的槽位并处理信箱积压">恢复槽位</button>
+        <button class="tool-btn" id="rightToggle" type="button" aria-pressed="true" title="任务板 / 事件流">面板</button>
+      </div>
+    </header>
+
+    <div class="transcript" id="transcript">
+      <div class="empty-state" id="transcriptEmpty">
+        <p class="empty-title">选择一个成员,或给它投一个目标</p>
+        <p class="empty-hint">「对话」直接和该成员交谈;「投递到信箱」按团队纪律唤醒它处理事项。任务拆解、成员汇报会实时出现在右侧面板。</p>
+      </div>
+    </div>
+
+    <div class="composer-zone">
+      <div class="composer-card">
+        <div class="composer-top">
+          <div class="seg" id="modeSeg" role="tablist">
+            <button type="button" class="seg-btn on" data-mode="chat" role="tab" aria-selected="true">对话</button>
+            <button type="button" class="seg-btn" data-mode="mailbox" role="tab" aria-selected="false">投递到信箱</button>
+          </div>
+          <button type="button" class="model-chip mono" id="modelChip" title="模型设置">…</button>
+        </div>
+        <textarea id="composerInput" rows="1" placeholder="给 team-lead 投一个目标,例如:调研 weaviate 和 pgvector 的选型差异,给出结论" maxlength="4000"></textarea>
+        <div class="composer-foot">
+          <span class="composer-hint" id="composerHint">回合结束后自动汇入该会话记忆</span>
+          <button class="send-btn" id="composerSend" type="button" disabled>发送</button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- 右栏:停靠面板 -->
+  <aside class="rightbar" id="rightbar">
+    <div class="dock-tabs" role="tablist">
+      <button type="button" class="dock-tab on" data-tab="tasks" role="tab" aria-selected="true">任务板</button>
+      <button type="button" class="dock-tab" data-tab="events" role="tab" aria-selected="false">事件流<span class="badge hidden" id="eventBadge"></span></button>
+    </div>
+
+    <section class="dock-pane on" id="tab-tasks" role="tabpanel">
+      <ul id="taskList" class="task-list"></ul>
+      <div id="tasksEmpty" class="dock-empty">任务板还是空的。给 Leader 投一个目标,拆解出的任务会出现在这里。</div>
+    </section>
+
+    <section class="dock-pane" id="tab-events" role="tabpanel">
+      <ul id="eventFeed" class="event-list" aria-live="polite"></ul>
+      <div id="eventsEmpty" class="dock-empty">等待事件——唤醒、分配、汇报都会实时出现在这里。</div>
+    </section>
+  </aside>
+
+</div>
+
+<!-- 建团队 -->
+<dialog id="teamDialog" class="dialog">
+  <h3>建团队</h3>
+  <div class="field">
+    <label for="teamName">团队名称</label>
+    <input id="teamName" type="text" placeholder="如:调研小组" maxlength="64">
+    <p class="hint">建团后 team-lead 自动作为 Leader 入列。</p>
+  </div>
+  <menu class="dialog-actions">
+    <button class="btn ghost" id="teamCancel" type="button">取消</button>
+    <button class="btn solid" id="teamCreateBtn" type="button">创建</button>
+  </menu>
+</dialog>
+
+<!-- 加入成员 -->
+<dialog id="memberDialog" class="dialog">
+  <h3>加入成员</h3>
+  <div class="seg wide" id="memberModeSeg" role="tablist">
+    <button type="button" class="seg-btn on" data-mode="existing" role="tab" aria-selected="true">已有 Agent</button>
+    <button type="button" class="seg-btn" data-mode="spawn" role="tab" aria-selected="false">动态组建</button>
+  </div>
+  <div class="field" id="fieldExisting">
+    <label for="memberSn">Agent(sn)</label>
+    <select id="memberSn"></select>
+    <p class="hint">来自启动时注册与运行时动态组建的 Agent。</p>
+  </div>
+  <div class="field hidden" id="fieldSpawn">
+    <label for="memberName">成员名称</label>
+    <input id="memberName" type="text" placeholder="如:文案作者" maxlength="64">
+    <label for="memberDuty">职责说明</label>
+    <input id="memberDuty" type="text" placeholder="擅长什么、负责什么" maxlength="200">
+    <p class="hint">系统会动态构建并注册 sn,直接生效。</p>
+  </div>
+  <menu class="dialog-actions">
+    <button class="btn ghost" id="memberCancel" type="button">取消</button>
+    <button class="btn solid" id="memberSubmit" type="button">加入</button>
+  </menu>
+</dialog>
+
+<!-- 设置(对齐 dsh Settings:右侧滑出 + 内部导航) -->
+<div class="settings-mask hidden" id="settingsMask"></div>
+<aside class="settings hidden" id="settings" role="dialog" aria-label="设置">
+  <header class="set-head">
+    <h3>设置</h3>
+    <button class="icon-btn" id="settingsClose" title="关闭 (Esc)">✕</button>
+  </header>
+  <div class="set-columns">
+    <nav class="set-nav">
+      <button type="button" class="set-item on" data-tab="model">模型</button>
+      <button type="button" class="set-item" data-tab="governance">团队治理</button>
+      <button type="button" class="set-item" data-tab="appearance">外观</button>
+      <button type="button" class="set-item" data-tab="system">系统状态</button>
+    </nav>
+
+    <div class="set-body">
+      <section class="set-pane on" id="set-model">
+        <h4>模型</h4>
+        <p class="set-desc">保存后无需重启,后续模型调用使用新配置,已发出的请求继续使用原配置。</p>
+        <div class="field"><label for="setBaseUrl">API Base URL</label><input id="setBaseUrl" type="url" required placeholder="https://api.deepseek.com"></div>
+        <div class="field"><label for="setApiKey">API Key</label><input id="setApiKey" type="password" placeholder="留空 = 保留现有 Key" autocomplete="off"><p class="hint" id="keyHint"></p></div>
+        <div class="field"><label for="setModel">模型 ID</label><input id="setModel" type="text" required placeholder="deepseek-chat"></div>
+        <div class="field"><label for="setTemperature">Temperature(0 - 2)</label><input id="setTemperature" type="number" required step="0.1" min="0" max="2"></div>
+        <div class="field row">
+          <div><label>演示模式</label><p class="hint">脚本化 Mock 模型,无需 Key 即可跑通全链路</p></div>
+          <button type="button" class="toggle" id="setMock" aria-label="演示模式" aria-pressed="false"><span class="knob"></span></button>
+        </div>
+        <button class="btn solid" id="setModelSave" type="button">保存并生效</button>
+      </section>
+
+      <section class="set-pane" id="set-governance">
+        <h4>团队治理</h4>
+        <p class="set-desc">调度可靠性参数,保存后对后续回合立即生效。</p>
+        <div class="field"><label for="setLease">回合租约(秒,超时判定僵死并回收重投)</label><input id="setLease" type="number" required step="1" min="30" max="2147483647"></div>
+        <div class="field"><label for="setAttempts">投递重试上限(超限暂停槽位并通知 Leader)</label><input id="setAttempts" type="number" required step="1" min="1" max="2147483647"></div>
+        <div class="field"><label for="setBatch">单次唤醒最多注入的未读消息数</label><input id="setBatch" type="number" required step="1" min="1" max="2147483647"></div>
+        <button class="btn solid" id="setGovernanceSave" type="button">保存</button>
+      </section>
+
+      <section class="set-pane" id="set-appearance">
+        <h4>外观</h4>
+        <p class="set-desc">立即生效,保存在本机浏览器。</p>
+        <div class="field">
+          <label>主题</label>
+          <div class="seg wide" id="themeSeg">
+            <button type="button" class="seg-btn on" data-theme="dark">深色</button>
+            <button type="button" class="seg-btn" data-theme="light">浅色</button>
+          </div>
+        </div>
+        <div class="field">
+          <label>字号</label>
+          <div class="seg wide" id="fontSeg">
+            <button type="button" class="seg-btn" data-zoom="0.9">小</button>
+            <button type="button" class="seg-btn on" data-zoom="1">标准</button>
+            <button type="button" class="seg-btn" data-zoom="1.12">大</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="set-pane" id="set-system">
+        <h4>系统状态</h4>
+        <div id="systemStatus" class="status-rows">加载中…</div>
+        <button class="btn ghost" id="statusRefresh" type="button">刷新</button>
+      </section>
+    </div>
+  </div>
+</aside>
+
+<div class="toast hidden" id="toast" role="status"></div>
+
+<script src="js/app.js?v=8"></script>
+</body>
+</html>
