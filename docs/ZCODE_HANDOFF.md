@@ -38,7 +38,8 @@
 - 用户明确要求上传 GitHub 私有仓库；目标为 `2395115107-stack/my-agent`，分支 `main`，仓库地址 `https://github.com/2395115107-stack/my-agent`。
 - 2026-10-03 20:30（Asia/Shanghai）重新执行 `mvn test`：41 个 Java 源文件编译成功，7 个测试全部通过（0 失败、0 错误、0 跳过）。保留了期间 ZCode 对成员恢复、团队调度和客户端的最新修改。
 - `.gitignore` 排除 `target/`、`.handoff-backups/`、`docs/evidence/`、运行日志和 `.env` 本机配置；便携工具、PostgreSQL/Redis 数据均在项目目录之外，不上传。
-- Git 身份只配置在本项目，使用 GitHub noreply 邮箱。已创建仓库并推送；GitHub 查询确认 `isPrivate=true`、`visibility=PRIVATE`、默认分支 `main`。源码提交 `401f5b9d0ad4578ac775e368fbe403d0b303e37c` 已核验与远端 `main` 一致；本段交接记录随后单独提交并推送。
+- Git 身份只配置在本项目，使用 GitHub noreply 邮箱。已创建仓库并推送；GitHub 查询确认 `isPrivate=true`、`visibility=PRIVATE`、默认分支 `main`。首次源码提交 `401f5b9d0ad4578ac775e368fbe403d0b303e37c` 已核验与远端 `main` 一致；交接记录及随后前端改动另行提交并推送。
+- 上传期间同步客户端花名册字段为接口的 `sn`，补齐 Leader 自动选中的剩余引用。使用运行中接口返回的 3 名成员验证 Leader 自动选中通过，Node 前端语法检查通过；前端资源缓存版本为 `v=9`。
 
 ## 2026-10-03 晚(第二棒 ZCode)续记
 
@@ -48,3 +49,16 @@
 - 当前运行:8070,PID 27508(app23 日志);模型 = Mock 开(库内持久化),治理 = 600/3/50;本地替身 127.0.0.1:9311 仍在运行,不需要可关闭。
 - 前端资源版本 v=7;测试:`mvn.cmd -s D:/Users/agent/tools/settings.xml -B -ntp test`。
 - 下一轮入口不变:会话目录/历史、流式停止、消息 Markdown 与基本消息操作(见 HARNESS_PARITY.md)。
+
+## 2026-10-03 深夜(第三轮迭代:调度生命周期补全)
+
+自用排查后修复 4 个不合理点,已全部浏览器实测:
+
+1. **spawn 成员重启丢失**:动态成员的 Agent 是内存态,重启后"有名无实"(点击即 500)。SpawnService 启动时从花名册 system_prompt 重建注册(restorePersistedMembers);实测重启后 member-67142fd1 可正常对话。
+2. **暂停后无恢复入口**:补全生命周期——REST `POST /api/team/{id}/members/{sn}/resume`、Leader 工具 `teamResumeAgent`、调度器 `kick()`(恢复后立即对账信箱积压)、客户端会话头"恢复槽位"按钮。实测:SQL 暂停 → 投递积压(未读徽标 1)→ 点恢复 → turn 派发处理积压 → 徽标清零、状态 ACTIVE。
+3. **信箱积压不可见**:GET /members 改返回 membersPayload(含 unread),花名册加未读徽标;turn_done 事件后自动刷新。注意:members 字段名是 `sn`(不是实体里的 agentSn),前端已统一。
+4. **流式回合不能停止**:对话模式接入 AbortController,流式期间发送按钮变红色"停止",中止后条目记"(已停止)";后端 WebFlux 检测断连自动取消订阅,直聊无 turn 生命周期故安全。用 1.5s 延迟的本地协议替身(tools/openai-stub.js)实测通过。
+
+另修:Mock 直聊文案指向设置页开关(原提 LLM_MOCK=true)。前端资源版本 v=9(本轮实际 v=9→v=10 起过两版,以 index.html 为准)。
+
+运行状态:8070,模型 = Mock 开(库内持久化),治理 600/3/50,替身 9311 可关。下一轮入口不变(见 HARNESS_PARITY.md):会话目录/历史、消息 Markdown、审批 HITL。

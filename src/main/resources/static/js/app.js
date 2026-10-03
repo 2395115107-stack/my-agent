@@ -123,7 +123,7 @@ async function refreshAndRevealLead() {
   await refreshTeamData();
   if (!state.selectedSn) {
     const lead = currentMembers.find(m => m.role === "LEAD");
-    if (lead) selectPeer(lead.agentSn);
+    if (lead) selectPeer(lead.sn);
   }
 }
 
@@ -155,15 +155,15 @@ function renderRoster(members) {
   list.innerHTML = "";
   $("rosterEmpty").classList.toggle("hidden", members.length > 0);
   for (const m of members) {
-    const li = el("li", "session-item" + (m.agentSn === state.selectedSn ? " on" : ""));
+    const li = el("li", "session-item" + (m.sn === state.selectedSn ? " on" : ""));
     const dot = el("span", "s-dot" + (m.status === "PAUSED" ? " paused" : ""));
-    dot.dataset.sn = m.agentSn;
+    dot.dataset.sn = m.sn;
     li.appendChild(dot);
-    li.appendChild(el("span", "s-name", m.displayName || m.agentSn));
-    li.appendChild(el("span", "s-sn", m.agentSn));
+    li.appendChild(el("span", "s-name", m.displayName || m.sn));
+    li.appendChild(el("span", "s-sn", m.sn));
     if (m.unread > 0) li.appendChild(el("span", "s-unread", String(m.unread)));
     if (m.role === "LEAD") li.appendChild(el("span", "s-role lead", "Lead"));
-    const pick = () => selectPeer(m.agentSn);
+    const pick = () => selectPeer(m.sn);
     li.setAttribute("role", "button");
     li.setAttribute("tabindex", "0");
     li.addEventListener("click", pick);
@@ -198,7 +198,7 @@ function connectEvents() {
 
   const handlers = {
     task_changed: (p) => { refreshTeamData(); pulseSnFromTask(p); },
-    mailbox_changed: (p) => { /* turn_done:{sn} */ },
+    mailbox_changed: (p) => { if (p && p.startsWith("turn_done:")) refreshTeamData(); },
     teammate_message: (p) => { /* 成员回合产出全文 */ },
     agent_status_changed: (p) => { refreshTeamData(); pulseSn(p.split(":")[0]); },
     turn_failed: (p) => { refreshTeamData(); pulseSn(p.split(":")[0]); },
@@ -255,7 +255,7 @@ function selectPeer(sn) {
   $("composerInput").focus();
 }
 
-function peerOf(sn) { return currentMembers.find(m => m.agentSn === sn); }
+function peerOf(sn) { return currentMembers.find(m => m.sn === sn); }
 
 function isPaused(sn) {
   const m = peerOf(sn);
@@ -264,16 +264,16 @@ function isPaused(sn) {
 
 function renderPeer() {
   const m = state.selectedSn ? peerOf(state.selectedSn) : null;
-  $("peerName").textContent = m ? (m.displayName || m.agentSn) : "未选择成员";
+  $("peerName").textContent = m ? (m.displayName || m.sn) : "未选择成员";
   $("peerSn").textContent = m
-    ? `${m.agentSn} · ${m.status === "PAUSED" ? "已暂停" : "活跃"}`
+    ? `${m.sn} · ${m.status === "PAUSED" ? "已暂停" : "活跃"}`
     : "从左侧选择一个成员开始";
   $("peerDot").classList.toggle("on", !!(m && m.status !== "PAUSED"));
   $("btnResume").classList.toggle("hidden", !(m && m.status === "PAUSED"));
   $("composerInput").placeholder = m
     ? (state.composerMode === "chat"
-      ? `和 ${m.agentSn} 对话…`
-      : `投递给 ${m.agentSn} 的信箱(将唤醒它)…`)
+      ? `和 ${m.sn} 对话…`
+      : `投递给 ${m.sn} 的信箱(将唤醒它)…`)
     : "先在左侧选择一个成员";
   $("composerSend").disabled = !m;
   const mailbox = state.composerMode === "mailbox";
