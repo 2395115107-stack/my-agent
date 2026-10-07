@@ -16,6 +16,7 @@ public class SettingService {
 
     public static final String MODEL_CONFIG = "model.config";
     public static final String TEAM_GOVERNANCE = "team.governance";
+    public static final String PATROL_CONFIG = "patrol.config";
 
     private final JdbcTemplate jdbc;
 

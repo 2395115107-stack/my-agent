@@ -5,6 +5,7 @@ import com.myagent.config.SettingService;
 import com.myagent.engine.AgentRegistry;
 import com.myagent.team.TeamProperties;
 import com.myagent.team.mapper.TeamMapper;
+import com.myagent.team.patrol.PatrolProperties;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.EmptyResultDataAccessException;
@@ -29,6 +30,7 @@ class SettingsControllerTest {
     private boolean writeFails;
     private ModelFactory model;
     private TeamProperties team;
+    private PatrolProperties patrol;
     private SettingService settings;
     private SettingsController controller;
 
@@ -56,7 +58,8 @@ class SettingsControllerTest {
         model.setMock(true);
         ReflectionTestUtils.invokeMethod(model, "init");
         team = new TeamProperties();
-        controller = new SettingsController(model, settings, team, null, null, null, null);
+        patrol = new PatrolProperties();
+        controller = new SettingsController(model, settings, team, patrol, null, null, null, null);
     }
 
     @Test
@@ -126,11 +129,63 @@ class SettingsControllerTest {
         when(factory.getConnection()).thenReturn(connection);
         StringRedisTemplate redis = new StringRedisTemplate();
         redis.setConnectionFactory(factory);
-        controller = new SettingsController(model, settings, team, new AgentRegistry(), mapper, dataSource, redis);
+        controller = new SettingsController(model, settings, team, patrol, new AgentRegistry(), mapper, dataSource, redis);
         Map<String, Object> status = controller.status();
         assertEquals("down", status.get("pg"));
         assertEquals("up", status.get("redis"));
         assertNull(status.get("teams"));
         verify(connection).close();
+    }
+
+    // ---------- 巡查设置(热调 + 持久化) ----------
+
+    @Test
+    void patrolSettingsHotApplyAndPersist() {
+        Map<String, Object> result = controller.updatePatrol(Map.of(
+                "stalledMinutes", 20, "autoNudge", false, "notifyCooldownSeconds", 30));
+        assertEquals(20, result.get("stalledMinutes"));
+        assertEquals(false, result.get("autoNudge"));
+        assertEquals(30, result.get("notifyCooldownSeconds"));
+        assertEquals(20, patrol.getStalledMinutes());
+        assertFalse(patrol.isAutoNudge());
+        Map<String, Object> saved = settings.getJson(SettingService.PATROL_CONFIG);
+        assertEquals(20, saved.get("stalledMinutes"));
+        assertEquals(false, saved.get("autoNudge"));
+        assertEquals(30, saved.get("notifyCooldownSeconds"));
+    }
+
+    @Test
+    void invalidPatrolFieldRejectsWholeBatchWithoutTouchingRuntime() {
+        ResponseStatusException error = assertThrows(ResponseStatusException.class,
+                () -> controller.updatePatrol(Map.of("stalledMinutes", 15, "backlogUnread", 0)));
+        assertEquals(400, error.getStatusCode().value());
+        assertEquals(10, patrol.getStalledMinutes());
+        assertTrue(settings.getJson(SettingService.PATROL_CONFIG).isEmpty());
+    }
+
+    @Test
+    void probeCapBelowProbeBaseIsRejected() {
+        ResponseStatusException error = assertThrows(ResponseStatusException.class,
+                () -> controller.updatePatrol(Map.of("probeBaseSeconds", 300, "probeCapSeconds", 60)));
+        assertEquals(400, error.getStatusCode().value());
+        assertEquals(120, patrol.getProbeBaseSeconds());
+    }
+
+    @Test
+    void booleanPatrolFieldsAcceptStringForm() {
+        Map<String, Object> result = controller.updatePatrol(Map.of("enabled", "false"));
+        assertEquals(false, result.get("enabled"));
+        assertFalse(patrol.isEnabled());
+    }
+
+    @Test
+    void retryBackoffFieldsPersistUnderGovernance() {
+        Map<String, Object> result = controller.updateTeam(Map.of(
+                "retryBackoffBaseSeconds", 10, "retryBackoffCapSeconds", 300));
+        assertEquals(10, result.get("retryBackoffBaseSeconds"));
+        assertEquals(300, result.get("retryBackoffCapSeconds"));
+        assertEquals(300, controller.getTeam().get("retryBackoffCapSeconds"));
+        Map<String, Object> saved = settings.getJson(SettingService.TEAM_GOVERNANCE);
+        assertEquals(10, saved.get("retryBackoffBaseSeconds"));
     }
 }

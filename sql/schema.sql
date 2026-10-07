@@ -17,6 +17,8 @@ CREATE TABLE IF NOT EXISTS tbl_team_member (
     display_name  VARCHAR(128),
     system_prompt TEXT,
     status        VARCHAR(16)  NOT NULL DEFAULT 'ACTIVE',   -- ACTIVE | PAUSED
+    pause_count   INT NOT NULL DEFAULT 0,                    -- 连续暂停次数(探活冷却指数退避)
+    paused_at     TIMESTAMP,                                 -- 最近暂停时间(探活窗起点)
     created_at    TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_member_team ON tbl_team_member(team_id);
@@ -102,3 +104,29 @@ CREATE TABLE IF NOT EXISTS tbl_session (
     created_at TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_session_project ON tbl_session(project_id);
+
+-- 自动巡查发现记录(编排器与巡检项对账的持久层;状态机 OPEN -> RESOLVED / OPEN -> ACK -> RESOLVED)
+CREATE TABLE IF NOT EXISTS tbl_patrol_finding (
+    id               BIGSERIAL PRIMARY KEY,
+    team_id          BIGINT NOT NULL REFERENCES tbl_team(id),
+    check_key        VARCHAR(64)  NOT NULL,              -- 巡检项 key(如 stalled_task)
+    severity         VARCHAR(16)  NOT NULL,              -- INFO|WARN|CRITICAL
+    subject          VARCHAR(300) NOT NULL,              -- 去重键的一部分:发现的主体(如 "task#12")
+    detail           TEXT,
+    suggestion       TEXT,
+    auto_action      VARCHAR(300),                       -- 最近一次自动处置描述(未执行为 NULL)
+    status           VARCHAR(16)  NOT NULL DEFAULT 'OPEN', -- OPEN|ACK|RESOLVED
+    occurrence_count INT NOT NULL DEFAULT 1,
+    first_seen_at    TIMESTAMP,
+    last_seen_at     TIMESTAMP,
+    resolved_at      TIMESTAMP,
+    notified_at      TIMESTAMP                           -- 最近一次通知 Leader 时间(冷却窗用)
+);
+CREATE INDEX IF NOT EXISTS idx_patrol_team_status ON tbl_patrol_finding(team_id, status);
+CREATE INDEX IF NOT EXISTS idx_patrol_dedupe      ON tbl_patrol_finding(team_id, check_key, subject);
+
+-- turn 失败原因留痕(巡查诊断用;ALTER 幂等,老库升级自动补列)
+ALTER TABLE tbl_team_turn ADD COLUMN IF NOT EXISTS fail_reason TEXT;
+-- 成员熔断计数与暂停时间(半开自动探活用;ALTER 幂等)
+ALTER TABLE tbl_team_member ADD COLUMN IF NOT EXISTS pause_count INT NOT NULL DEFAULT 0;
+ALTER TABLE tbl_team_member ADD COLUMN IF NOT EXISTS paused_at TIMESTAMP;

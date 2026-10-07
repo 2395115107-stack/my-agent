@@ -934,3 +934,46 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   font-size: 11.5px; color: var(--text-2);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+
+/* ---------- 巡查(右侧停靠第三页签) ---------- */
+.patrol-list { list-style: none; margin: 0; padding: 0; }
+.patrol-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; padding: 2px 2px 8px;
+}
+.patrol-hint { font-size: 11.5px; color: var(--text-3); }
+.patrol-run {
+  flex: none; font-size: 11.5px; padding: 3px 10px; border-radius: 999px;
+  border: 1px solid var(--border-2); background: transparent; color: var(--text-2);
+  cursor: pointer;
+}
+.patrol-run:hover:not(:disabled) { border-color: var(--accent); color: var(--accent-hover); }
+.patrol-run:disabled { opacity: .5; cursor: default; }
+
+.patrol-finding {
+  padding: 8px 2px; border-bottom: 1px solid var(--border-1); font-size: 12.5px;
+}
+.patrol-finding.resolved { opacity: .55; }
+.patrol-head { display: flex; gap: 8px; align-items: baseline; min-width: 0; }
+.patrol-sev {
+  flex: none; font-family: var(--font-code); font-size: 9.5px;
+  padding: 1px 7px; border-radius: 999px; border: 1px solid var(--border-2);
+  color: var(--text-3);
+}
+.patrol-sev.CRITICAL { color: var(--danger); border-color: var(--danger); background: var(--danger-soft); }
+.patrol-sev.WARN { color: var(--accent-hover); border-color: var(--accent); }
+.patrol-sev.INFO { color: var(--ok); border-color: var(--ok); }
+.patrol-check { flex: none; font-family: var(--font-code); font-size: 11px; color: var(--text-3); }
+.patrol-subject {
+  flex: 1; min-width: 0; font-family: var(--font-code); font-size: 11.5px; color: var(--text-2);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.patrol-status { flex: none; font-size: 11px; color: var(--ok); }
+.patrol-ack {
+  flex: none; font-size: 11px; padding: 1px 8px; border-radius: 999px;
+  border: 1px solid var(--border-2); background: transparent; color: var(--text-3); cursor: pointer;
+}
+.patrol-ack:hover { border-color: var(--accent); color: var(--accent-hover); }
+.patrol-detail { margin-top: 3px; color: var(--text-2); line-height: 1.6; }
+.patrol-suggestion { margin-top: 2px; font-size: 11.5px; color: var(--text-3); line-height: 1.6; }
+.patrol-meta { margin-top: 3px; font-family: var(--font-code); font-size: 10.5px; color: var(--text-3); }

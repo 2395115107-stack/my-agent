@@ -50,3 +50,22 @@ myagent:
     delivery-max-attempts: 3
     # 单成员单次唤醒最多注入的未读消息数
     wake-batch-size: 50
+    # 失败重投指数退避:第 n 次重试等待 base*2^(n-2) ± 20% 抖动,封顶 cap(防重试风暴)
+    retry-backoff-base-seconds: 5
+    retry-backoff-cap-seconds: 120
+  patrol:
+    # 自动巡查:定时巡检任务/信箱/成员槽位/回合失败,异常落库 + SSE 事件 + Leader 通知
+    enabled: true
+    interval-ms: 30000
+    stalled-minutes: 10          # IN_PROGRESS 任务停滞阈值(分钟)
+    unassigned-minutes: 30       # 无主 PENDING 任务滞留阈值(分钟)
+    backlog-age-minutes: 15      # 未读积压年龄阈值(分钟)
+    backlog-unread: 30           # 未读积压数量阈值
+    consecutive-failures: 3      # 连续回合失败次数阈值
+    notify-cooldown-seconds: 600 # 同一发现重复通知 Leader 的冷却窗(秒)
+    auto-nudge: true             # 停滞任务自动催办 owner
+    auto-probe-paused: true      # 熔断半开:暂停槽位到期自动探活(失败回暂停、冷却翻倍)
+    probe-base-seconds: 120      # 探活冷却基数(秒),按连续暂停次数指数退避
+    probe-cap-seconds: 1800      # 探活冷却封顶(秒)
+    inject-wake: true            # Leader 唤醒时注入巡查简报(MAPE-K Knowledge)
+    unverified-lookback-minutes: 120  # 完成核验回看窗(分钟)

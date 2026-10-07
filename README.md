@@ -21,7 +21,7 @@
 |---|---|---|
 | 侧栏 | 品牌行、新对话、团队列表、成员会话(状态点/Lead 徽章)、底部「加入成员」 | brand row / New Session / Sessions / Settings seat |
 | 中栏 | 会话头(成员名·sn·状态)+ 消息流(用户气泡右、助手平铺左、信箱投递虚线卡、系统错误红卡)+ 底部大圆角输入卡(模式切换:对话 / 投递到信箱) | conversation / composer |
-| 右栏 | 停靠 tab:任务板(编号/标题/owner/状态徽章)、事件流(task_changed / turn_failed / agent_status_changed / teammate_message 实时推送,未读计数徽标) | right sidebar dockkit tabs |
+| 右栏 | 停靠 tab:任务板(编号/标题/owner/状态徽章)、事件流(task_changed / turn_failed / agent_status_changed / teammate_message / patrol_finding 实时推送,未读计数徽标)、巡查(发现列表:严重度徽章/建议/发生次数/自动处置留痕,「立即巡查」手动触发) | right sidebar dockkit tabs |
 
 交互说明:
 - **对话模式**走 `POST /api/agent/chat`(SSE 流式,{content,end} 帧);**投递到信箱**走 `POST /api/team/{id}/messages`(分配即唤醒纪律)。
@@ -30,7 +30,38 @@
 
 输入交互(对齐 OpenAI Codex 客户端的实用集,2026-10-04):**排队输入**(回合流式期间继续发送,自动排队并在回合结束后依序发出)、**编辑/重试**(任意历史用户消息悬停出「编辑/重试」,发送后 fork 出新会话——服务端复制消息与图检查点,上下文延续、原会话保留;Codex Esc×2 语义)、**Esc 中断**当前回合、**↑/↓ 草稿历史**、**/ 命令面板**(行首 `/`:new/copy/model/mock/theme/tasks/events/resume/search)、**@ 成员引用**(候选菜单,选中即切换会话对象)、**Ctrl+R** 历史搜索浮层(跨会话消息检索)、**Ctrl+O / /copy** 复制最近回复。
 
-为客户端新增的后端接口:`GET /api/team`(团队列表)、`GET /api/agents`(注册表目录)、`GET /api/team/{id}/members`(含未读数)、`POST /api/team/{id}/members/{sn}/resume`(恢复暂停槽位并处理积压)、`POST /api/agent/sessions/fork`(消息+检查点复制分叉)、`GET /api/agent/sessions/search`(历史搜索)、`turn_failed` SSE 事件;启动时自动从花名册恢复动态成员注册。
+为客户端新增的后端接口:`GET /api/team`(团队列表)、`GET /api/agents`(注册表目录)、`GET /api/team/{id}/members`(含未读数)、`POST /api/team/{id}/members/{sn}/resume`(恢复暂停槽位并处理积压)、`POST /api/agent/sessions/fork`(消息+检查点复制分叉)、`GET /api/agent/sessions/search`(历史搜索)、`turn_failed` / `patrol_finding` SSE 事件;启动时自动从花名册恢复动态成员注册。
+
+## 自动巡查(patrol)
+
+平台自愈回路:定时(默认 30s,可配)+ 手动「立即巡查」对全部 ACTIVE 团队执行「巡检 → 对账 → 处置」,对账落库 `tbl_patrol_finding`,异常经 `patrol_finding` SSE 实时推送到调度台,并按冷却窗给 Leader 信箱投递告警。
+
+- **架构**:巡检项是 SPI(`team/patrol/PatrolCheck`),实现标 `@Component` 即纳入巡查,只发现问题不写库;编排器(`PatrolService`)统一做对账(新发现 OPEN / 持续累计 occurrence / 消失 RESOLVED / 复发重开)、自动处置与通知,串行化避免并发对账产生重复行。去重键 = `checkKey|subject`。
+- **内置 6 个巡检项**(`team/patrol/check/`):
+  - `stalled_task`:IN_PROGRESS 任务停滞(owner 空闲超过 `stalled-minutes`)——owner 暂停/不在册升级 CRITICAL,其余 WARN 并**自动催办**(重投任务通知,唤醒 owner,只执行一次);
+  - `unassigned_task`:PENDING 无主任务滞留超过 `unassigned-minutes`;
+  - `mailbox_backlog`:ACTIVE 成员信箱积压(数量/最老未读年龄超阈)——不在注册表的幽灵成员升级 CRITICAL;
+  - `paused_member`:投递超限被暂停的槽位(兜底提醒,resume 后自动消除);
+  - `turn_failure`:同一成员连续 `consecutive-failures` 个回合失败(带 `tbl_team_turn.fail_reason` 落库的原因,系统性故障信号);
+  - `unverified_completion`:任务标 COMPLETED 但 owner 完成前后无任何 `team_send_message` 汇报(MAST「任务验证」失败模式的系统侧巡检,只核验 `unverified-lookback-minutes` 窗内完成的任务)。
+- **ACK 语义**:认领过的发现停止通知,持续命中保持 ACK;升级为 CRITICAL 时重开重警。
+- **同实体告警聚合**(AIOps correlation):同一实体的多条发现合并为一封信箱告警(如模型故障同时触发 `turn_failure` + `paused_member` + `mailbox_backlog`)。巡检项可通过 `PatrolItem.withEntity("member:sn")` 声明关联实体(停滞任务关联到 owner),避免同一根因刷屏。
+- 配置(`myagent.patrol.*`,见 application.yml):`enabled` / `interval-ms` / `stalled-minutes` / `unassigned-minutes` / `backlog-age-minutes` / `backlog-unread` / `consecutive-failures` / `notify-cooldown-seconds` / `auto-nudge` / `auto-probe-paused` / `probe-base-seconds` / `probe-cap-seconds` / `inject-wake` / `unverified-lookback-minutes` / `retention-days`。
+  **yml 只是默认值**:除 `interval-ms` 外的全部阈值/开关可在**设置页「巡查」热调**(PUT `/api/settings/patrol`,持久化 `tbl_setting`,重启保留;启动时恢复),对后续巡次立即生效,无需重启。失败重投退避基数/封顶(`myagent.team.retry-backoff-*`)在「团队治理」热调。
+- **发现保留策略**:`retention-days`(默认 7)到期后 RESOLVED 发现由定时巡查自动清理;RESOLVED 后复发的发现重开会清除 autoAction 留痕并重新自动催办(复发重催)。
+- 接口:`GET /api/team/{id}/patrol`(未解决在前)、`POST /api/team/{id}/patrol/run`(手动触发,与定时同链路)、`POST /api/team/{id}/patrol/findings/{fid}/ack`。
+
+### 可靠性与自愈模式(2025+ 文献对齐)
+
+调度/巡查闭环按近年多智能体系统与自适系统的共识模式补齐,文献依据:
+
+| 模式 | 本工程落点 | 依据 |
+|---|---|---|
+| 指数退避 + 抖动重试(jittered exponential backoff) | 失败重投不再按对账节奏(2s)立刻重试:`retry-backoff-base * 2^(n-2) ± 20%`,封顶 `retry-backoff-cap`(ProtocolBench 列为多智能体协议韧性原语) | [ProtocolBench (arXiv)](https://arxiv.org) / [ByteByteGo: LLM 系统错误处理](https://blog.bytebytego.com) |
+| 熔断器 open → half-open(状态机) | 暂停槽位不再只能人工 resume:探活窗 `probe-base * 2^pauseCount`(封顶 `probe-cap`)到期自动半开试一回合,失败回暂停且冷却翻倍;人工 resume 清零计数 | [AutoGen/agent runtime 熔断实践](https://microsoft.github.io/autogen/stable//user-guide/agentchat-user-guide/magentic-one.html) |
+| MAPE-K 自愈闭环(LLM 化) | Monitor=巡查循环,Analyze=巡检项,Execute=自动催办/半开探活,Knowledge=Leader 唤醒时注入巡查简报(`inject-wake`,对应 Magentic-One 进度账本的系统侧) | [Magentic-One 双循环账本](https://www.microsoft.com/en-us/research/articles/magentic-one-a-generalist-multi-agent-system-for-solving-complex-tasks/) / [MAPE-K 扩展研究(2025–2026)](https://arxiv.org) |
+| 失败模式分类学驱动巡检 | 6 巡检项对齐 MAST 三类失败:规格(幽灵成员/无主任务)、成员间失协(停滞/积压/连续失败)、任务验证(`unverified_completion`) | [MAST: Why Do Multi-Agent LLM Systems Fail?(NeurIPS 2025)](https://arxiv.org/abs/2503.13657) |
+| 告警关联与降噪 | 同实体告警聚合为一条关联告警;通知冷却窗;ACK 抑制(对应 AIOps 的 correlation/suppression/flapping 治理) | [New Relic: Demystifying AIOps](https://newrelic.com) |
 
 ### 设置页
 
@@ -39,13 +70,14 @@
 | 页面 | 当前行为 |
 |---|---|
 | 模型 | OpenAI 兼容 Base URL、API Key、模型 ID、Temperature(0–2)、Mock 开关。Key 留空保留已有值，读取接口不回显 Key。保存后无需重启，后续模型调用使用新配置，已发出的请求继续使用原实例。 |
-| 团队治理 | 回合租约(整数 ≥30 秒)、投递重试上限(整数 ≥1)、唤醒批量(整数 ≥1)。保存后按后续调度读取生效。 |
+| 团队治理 | 回合租约(整数 ≥30 秒)、投递重试上限(整数 ≥1)、唤醒批量(整数 ≥1)、失败重投退避基数/封顶(秒)。保存后按后续调度读取生效。 |
+| 巡查 | 自动巡查总开关、任务停滞/无主滞留/积压年龄/积压数量/连续失败阈值、告警冷却窗、自动催办/半开探活/巡查简报开关、探活冷却基数/封顶、完成核验回看窗、已解除发现保留天数。保存后对后续巡次立即生效(巡检间隔除外，需重启)，持久化到 `tbl_setting`。 |
 | 外观 | 深色/浅色、三档整体缩放；即时生效并保存在当前浏览器，刷新和重新打开面板时恢复选中态。 |
 | 系统状态 | PostgreSQL/Redis 连通性、注册 Agent、团队数、当前模型；支持刷新。 |
 
 模型与治理配置保存在 PostgreSQL 的 `tbl_setting`，启动时覆盖对应的环境变量默认值；若首次升级已有数据库，运行现有 SchemaLoader 导入更新后的 `sql/schema.sql`（建表语句幂等）。无效输入会被页面阻止，直接调用 API 也会得到 `400` 和原因。构建模型或数据库保存失败时，已有运行时配置保持原值。
 
-接口：`GET/PUT /api/settings/model`、`GET/PUT /api/settings/team`、`GET /api/settings/status`。
+接口:`GET/PUT /api/settings/model`、`GET/PUT /api/settings/team`、`GET/PUT /api/settings/patrol`、`GET /api/settings/status`。
 
 ## 插件(对齐 dsh ui-plugin-manager / plugin-inventory)
 
@@ -77,6 +109,7 @@
 | 团队实时事件(SSE) | `web/TeamEventController` `team/TeamEventPublisher` | AionUi 19 个 team.* 事件(最小子集) |
 | 治理提示词(分配纪律/唤醒纪律/sn 纪律) | `resources/prompts/*.st` | AionUi 内嵌系统提示词(逆向提取) |
 | 插件面(启停/配置/只读清单/工具注入热重建) | `plugin/PluginService` `plugin/AgentRebuildService` `web/PluginController` | dsh `ui-plugin-manager` / `ui-settings-plugin-inventory`(官方组合包语义) |
+| 自动巡查(SPI 巡检项/对账落库/自动催办/冷却窗告警) | `team/patrol/PatrolService` `team/patrol/check/*` | 自研扩展(超出 dsh/AionUi 对齐面的平台自愈能力) |
 
 ## 环境要求
 

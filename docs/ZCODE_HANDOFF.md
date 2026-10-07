@@ -147,3 +147,50 @@
 1. **Windows exe**:jpackage app-image(dist/my-agent/ 含 my-agent.exe + 自带 JRE,约 240MB;zip 为 dist/my-agent-0.1.0-exe.zip)。exe 冒烟通过:配合同目录 config/application.yml(指向本机 PG/Redis)启动,数据与服务正常。无 WiX,未产 msi/exe 安装器,需要时再补。
 2. **GitHub**:my-agent 仓库(接管会话所建,此前私有)已推送本轮全部改动(commit 09841aa,含并行会话的 plugin 模块),并已转 **PUBLIC**:https://github.com/2395115107-stack/my-agent 。转公开前做过敏感扫描(无真实 Key/口令泄漏,仅文档中的本地默认口令示例)。dist/ 已加入 .gitignore(二进制 240MB 不进库)。
 3. 测试:全量 28 个用例(SettingsControllerTest 7 + Plugin 系列)全绿。
+
+## 2026-10-07(自动巡查轮:patrol 子系统 + interrupt 落库修复)
+
+本轮按用户指令「自动巡查架构迭代优化」新建平台自愈回路,无并行会话冲突(开工前已核对交接文档 mtime 10:53 与 app.js mtime,期间无他轮改动)。
+
+**架构**(分层,便于后续迭代):
+- 巡检项 SPI `team/patrol/PatrolCheck`:实现标 @Component 即纳入巡查,只发现问题不写库;去重键 = `checkKey|subject`,subject 要求跨巡次稳定。
+- 编排器 `PatrolService`:定时(`myagent.patrol.interval-ms`,默认 30s)+ 手动(POST run)同链路;对账语义:新命中 OPEN / 持续 occurrence+last_seen 累加 / 消失 RESOLVED / RESOLVED 复发重开(清 resolvedAt);自动处置按 item.action 声明执行(首次命中一次);Leader 通知走 `notify-cooldown-seconds` 冷却窗,ACK 不再通知,CRITICAL 升级重开重警。**patrolTeam 已 synchronized**——首轮实测发现手动轮(HTTP 线程)与定时轮交错(定时轮的 nudge 同步派发成员回合被拉长 ~1s),产生同键重复行,已修复并用连续三轮巡查验证无重复。
+- 内置 5 巡检项(`team/patrol/check/`):stalled_task(停滞任务,owner 暂停/幽灵升级 CRITICAL,其余自动催办 nudge_owner)/ unassigned_task / mailbox_backlog(幽灵成员 CRITICAL)/ paused_member / turn_failure(连续失败,依赖新落库的 fail_reason)。
+- 持久层:`tbl_patrol_finding`(resources/schema.sql 与 sql/schema.sql 已同步;启动幂等建表)+ `ALTER TABLE tbl_team_turn ADD COLUMN IF NOT EXISTS fail_reason`(老库自动补列);TurnLifecycleService.failTurn 落原因。
+- 接口:`GET /api/team/{id}/patrol`、`POST /api/team/{id}/patrol/run`、`POST /api/team/{id}/patrol/findings/{fid}/ack`;SSE 新事件 `patrol_finding`(payload: new:/resolved:/action:/escalated:)。
+- 前端(js v=21 / css v=17):右栏第三页签「巡查」——发现列表(严重度徽章/建议/连续命中次数/自动处置留痕/认领按钮)+「立即巡查」+ 未读徽标(SSE 到达且不在该页签时计数)。
+
+**顺手修复**:TeamScheduler.interrupt() 原先只改内存对象未落库,DB 里 turn 假 RUNNING 到租约过期,替换指令要等 10 分钟才被派发;新增 TurnLifecycleService.abortTurn(fail_reason="interrupted by leader",不计重试预算)落库。
+
+**实测**:42 单测全绿(新增 PatrolServiceTest 7 + PatrolChecksTest 7:对账/冷却窗/ACK 升级/催办一次/重开清 resolvedAt/各巡检项边界)。运行实例 8070(PG 5433 myagent 库、Redis 6380、mock=true,日志 tools/app42.log):造数(PatrolSeed.java,tools/ 下)→ 定时轮 30s 内产出 3 发现(无主/停滞/暂停)→ 催办唤醒 analyst-01(mock 回合跑完)→ Leader 信箱收到 3 条【巡查/WARN】(冷却窗生效,后续巡次未重发)→ ack 后持续命中保持 ACK → 清理造数后下一巡次全部自动 RESOLVED → SSE 收到 new:/action:/resolved: 全部事件 → 浏览器实测页签渲染/立即巡查/徽标清除均正常。测试数据已清理(任务软删、成员恢复、巡查表 TRUNCATE 后保留了部分真实 RESOLVED 历史,无 OPEN 遗留)。
+
+**已知边界/后续迭代项**:巡检项阈值只读启动配置(未接设置页热切);巡查发现无保留策略(低量,暂不清理);RESOLVED 复发重开不重置 occurrence;系统级巡检(PG/Redis 连通性)在设置页已有,未并入 team 巡查循环;nudge 在 RESOLVED 复发后不会再次执行(autoAction 已留痕)。
+
+**并行注意**:本轮未 git commit(遵照约定留工作区);8070 实例为本轮重建 jar(PID 见 tools/app42.log 头部);浏览器留有一个 127.0.0.1:8070 的 IAB 页签。
+
+## 2026-10-07(文献驱动迭代轮:自愈闭环补全 R1–R5)
+
+按用户指令「参考最新的文献来优化迭代架构」检索 2025–2026 文献后落地五项改动,无并行会话冲突(开工与收尾均核对了文件 mtime)。文献结论与依据表已写入 README「可靠性与自愈模式」小节:MAST 失败分类学(arXiv:2503.13657,NeurIPS 2025,14 类失败/3 大类)、Magentic-One 双循环账本(任务/进度账本+停滞检测重排,arXiv:2411.04468)、MAPE-K 的 LLM 化扩展(MAPER/agentic MAPE-K,2025–2026)、韧性原语(抖动指数退避/熔断 open-half-open,ProtocolBench 与 agent harness 实践)、AIOps 告警治理(关联/抑制/防抖)。
+
+1. **R1 指数退避+抖动重投**:失败重投不再贴着 2s 对账节奏硬重试。`TeamScheduler.nextRetryDelayMs` = base*2^(n-2) ± 20% 抖动,封顶 cap;`myagent.team.retry-backoff-base-seconds=5` / `retry-backoff-cap-seconds=120`。
+2. **R2 熔断半开自动探活**:暂停槽位到期自动转 ACTIVE 试一回合(探活窗 = probe-base*2^pauseCount,封顶 probe-cap;失败立即回暂停、冷却翻倍);人工 resume 清零 pause_count/paused_at。`tbl_team_member` 新增 pause_count/paused_at(CREATE TABLE + ALTER 双路径,老库升级已实测);pause 时 TurnLifecycleService 落计数。⚠️ 本轮再次踩了「改 sql/schema.sql 忘同步 resources/schema.sql」的坑:实体新列与库表不一致导致 spawn 恢复全挂(BadSqlGrammar),同步后自愈。**两份 schema 必须同轮同步,已写进 README 交付说明。**
+3. **R3 同实体告警聚合**:同一实体的多条发现合并为一条「【巡查/关联告警 ×N】」信箱告警;巡检项可用 `PatrolItem.withEntity("member:sn")` 声明关联实体(停滞任务关联 owner),与 subject 推导共用 `subjectEntityKey` 归一(实测踩坑:声明键带前缀、推导键不带,曾分成两组,已统一)。
+4. **R4 巡查知识注入(MAPE-K Knowledge)**:Leader 被唤醒时 wake prompt 附加最多 5 条 OPEN 发现简报(`inject-wake`,仅 LEAD 角色),对应 Magentic-One 进度账本的系统侧;无发现时零开销。效果为提示词注入,mock 输出不可直接观测,逻辑走查+配置开关验证。
+5. **R5 MAST 任务验证巡检项** `unverified_completion`:任务 COMPLETED 但 owner 完成前后无任何 team_send_message 汇报(payload "from":"<sn>" 的 MESSAGE;IDLE_NOTIFY 不算)→ WARN,只核验回看窗(默认 120 分钟)内的完成。
+
+**实测**(49 单测全绿,新增 TeamSchedulerResilienceTest 4 + PatrolServiceTest 聚合 2 + PatrolChecksTest MAST 1):e2e 用 --myagent.patrol.probe-base-seconds=10 --probe-cap-seconds=60 临时参数验证:暂停 analyst-01 → 定时轮聚合告警「关联告警 ×2 实体 analyst-01」→ 10s 后半开探活(日志 circuit half-open)→ mock 回合完成保持 ACTIVE;第二次暂停(pauseCount=2)探活窗 20s 翻倍 ✓;冷却窗抑制第二轮重发 ✓。测试数据已清理(任务软删、发现表 TRUNCATE、成员 ACTIVE)。**运行实例 8070 已恢复默认配置重启(app46.log)。**
+
+**遗留迭代项**:阈值/开关未接设置页(现只能改 yml 重启);R1/R2 的退避曲线未接 tbl_setting 热调;unverified_completion 的宽限窗固定 1 分钟;巡查简报只注入 Leader(成员侧上下文未做)。
+
+## 2026-10-07(可操作性轮:设置页热调 + 保留策略 + 复发重催 + ignoreNulls 修复)
+
+接上轮遗留项,把自愈回路的可操作性补齐(无并行冲突,改动前核对 mtime):
+
+1. **设置页「巡查」热调**:新增 set-nav 页签(14 个字段:总开关/5 类阈值/冷却窗/3 个开关/探活基数封顶/核验回看窗/保留天数),`GET/PUT /api/settings/patrol`,持久化 `tbl_setting` 的 `patrol.config`,启动恢复,保存后对后续巡次立即生效(interval-ms 除外,@Scheduled 启动期固定);「团队治理」新增失败重投退避基数/封顶(PUT /team 扩展字段)。PatrolProperties 全字段 volatile。校验沿用 SettingsController 惯例:任一字段非法整批 400、先校验后落库再应用,失败不动运行态。
+2. **发现保留策略**:`retentionDays`(默认 7),定时巡查每轮顺手 DELETE 超期 RESOLVED 行,finding 表不再无限增长。
+3. **复发重催**:RESOLVED 复发重开时清 autoAction,自动催办可再次执行(单测验证 owner 收到第二次催办)。
+4. **🐛 修复 MyBatis-Flex update 默认 ignoreNulls=true 踩坑**:`setPausedAt(null)`/`setResolvedAt(null)` 用 `update(entity)` 根本不会写 NULL 到库——resume 残留 paused_at、巡查重开残留 resolved_at 都是这个问题(前轮实测看到的 id=2 残留正是它,当时只修了内存侧)。涉及写入 NULL 的两处改用 `update(entity, false)` 全量更新(TeamController.resume、PatrolService 重开分支),库级复验通过。**后续凡是"清空某列"的语义都必须 update(entity, false) 或显式 UpdateChain。**
+
+实测:55 单测全绿(新增 Settings 巡查 4 + 保留清扫 1 + 重开重催改造 1);e2e:PUT stalledMinutes=1 → 停滞任务立即被发现,PUT stalledMinutes=200 → 同一发现自动 RESOLVED(全程无重启);PUT 后 tbl_setting 持久化;resume 后库中 paused_at=NULL;浏览器实测设置页巡查页签 14 字段渲染与开关状态。测试数据已清理,配置已恢复默认(10/600),实例 8070 为 app48.log。
+
+**遗留迭代项(下轮候选)**:巡查发现 ACK/详情交互增强(前端仅认领按钮);系统级巡检(PG/Redis)并入巡查循环需要 finding 表支持 team_id 为空的全局发现;巡查指标(MTTR/发现率)统计;单活跃团队假设、记忆管道、HITL spawn 等大项见 README 已知边界。

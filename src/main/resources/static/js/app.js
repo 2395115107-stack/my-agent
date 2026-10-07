@@ -18,6 +18,7 @@ const state = {
   es: null,
   streaming: false,
   eventUnseen: 0,
+  patrolUnseen: 0,
   dockTab: "tasks",
   /* Codex 客户端同款交互:排队输入 / 草稿历史 / 编辑分叉 */
   queue: [],            // 流式期间排队的消息 {sn, text},回合结束自动发送
@@ -117,6 +118,8 @@ function switchTeam(id, { silent = false } = {}) {
   if (state.es) { state.es.close(); state.es = null; }
   $("eventFeed").innerHTML = "";
   $("eventsEmpty").classList.remove("hidden");
+  $("patrolList").innerHTML = "";
+  $("patrolEmpty").classList.remove("hidden");
   connectEvents();
   refreshAndRevealLead();
   renderTeams();
@@ -209,6 +212,7 @@ function connectEvents() {
     teammate_message: (p) => { /* 成员回合产出全文 */ },
     agent_status_changed: (p) => { refreshTeamData(); pulseSn(p.split(":")[0]); },
     turn_failed: (p) => { refreshTeamData(); pulseSn(p.split(":")[0]); },
+    patrol_finding: (p) => { loadPatrol(); notePatrolUnseen(); },
   };
 
   for (const [name, fn] of Object.entries(handlers)) {
@@ -251,6 +255,77 @@ function pulseSn(sn) {
 
 /** task_changed payload 形如 created:{id} / {id}:{status},拿不到 owner;仅刷新任务板 */
 function pulseSnFromTask() { /* 语义保留:任务变化由 refreshTeamData 呈现 */ }
+
+/* ---------- 巡查(右侧停靠面板) ---------- */
+
+async function loadPatrol() {
+  if (!state.teamId) return;
+  try {
+    renderPatrol(await api(`/api/team/${state.teamId}/patrol`));
+  } catch (e) { console.error(e); }
+}
+
+function renderPatrol(findings) {
+  const list = $("patrolList");
+  list.innerHTML = "";
+  const open = findings.filter(f => f.status !== "RESOLVED");
+  $("patrolEmpty").classList.toggle("hidden", findings.length > 0);
+  $("patrolHint").textContent = findings.length
+    ? `${open.length} 项未解决 / 共 ${findings.length} 条记录。`
+    : "定时自动巡查中(30s)。";
+  for (const f of findings) {
+    const li = el("li", `patrol-finding${f.status === "RESOLVED" ? " resolved" : ""}`);
+    const head = el("div", "patrol-head");
+    head.appendChild(el("span", `patrol-sev ${f.severity}`, f.severity));
+    head.appendChild(el("span", "patrol-check", f.checkKey));
+    head.appendChild(el("span", "patrol-subject", f.subject));
+    if (f.status === "RESOLVED") {
+      head.appendChild(el("span", "patrol-status", "已解除"));
+    } else if (f.status === "ACK") {
+      head.appendChild(el("span", "patrol-status", "已认领"));
+    } else {
+      const ack = el("button", "patrol-ack", "认领");
+      ack.type = "button";
+      ack.addEventListener("click", () => ackFinding(f.id));
+      head.appendChild(ack);
+    }
+    li.appendChild(head);
+    li.appendChild(el("div", "patrol-detail", f.detail || ""));
+    if (f.suggestion) li.appendChild(el("div", "patrol-suggestion", "建议:" + f.suggestion));
+    const meta = [];
+    if (f.occurrenceCount > 1) meta.push(`连续命中 ${f.occurrenceCount} 次`);
+    if (f.autoAction) meta.push(f.autoAction);
+    if (meta.length) li.appendChild(el("div", "patrol-meta", meta.join(" · ")));
+    list.appendChild(li);
+  }
+}
+
+/** SSE patrol_finding 到达且当前不在巡查页签时计未读 */
+function notePatrolUnseen() {
+  if (state.dockTab === "patrol") return;
+  state.patrolUnseen += 1;
+  const badge = $("patrolBadge");
+  badge.textContent = state.patrolUnseen > 99 ? "99+" : String(state.patrolUnseen);
+  badge.classList.remove("hidden");
+}
+
+async function ackFinding(id) {
+  try {
+    await post(`/api/team/${state.teamId}/patrol/findings/${id}/ack`);
+    await loadPatrol();
+  } catch (e) { toast(`认领失败:${e.message}`); }
+}
+
+async function runPatrolNow() {
+  const btn = $("patrolRunBtn");
+  btn.disabled = true;
+  try {
+    const result = await post(`/api/team/${state.teamId}/patrol/run`);
+    renderPatrol(result.findings || []);
+    toast(`巡查完成:本轮命中 ${result.detected} 项`);
+  } catch (e) { toast(`巡查失败:${e.message}`); }
+  finally { btn.disabled = false; }
+}
 
 /* ---------- 会话区 ---------- */
 
@@ -1108,8 +1183,14 @@ function bindUI() {
     if (state.dockTab === "events") {
       state.eventUnseen = 0;
       $("eventBadge").classList.add("hidden");
+    } else if (state.dockTab === "patrol") {
+      state.patrolUnseen = 0;
+      $("patrolBadge").classList.add("hidden");
+      loadPatrol();
     }
   });
+
+  $("patrolRunBtn").addEventListener("click", runPatrolNow);
 
   // 设置面板
   $("btnSettings").addEventListener("click", () => openSettings("model"));
@@ -1160,6 +1241,12 @@ function bindUI() {
   });
   $("setModelSave").addEventListener("click", saveModelSettings);
   $("setGovernanceSave").addEventListener("click", saveGovernanceSettings);
+  $("setPatrolSave").addEventListener("click", savePatrolSettings);
+  for (const id of ["setPatrolEnabled", "setAutoNudge", "setAutoProbe", "setInjectWake"]) {
+    $(id).addEventListener("click", () => {
+      $(id).setAttribute("aria-pressed", $(id).getAttribute("aria-pressed") !== "true");
+    });
+  }
   $("statusRefresh").addEventListener("click", loadSystemStatus);
   $("modelChip").addEventListener("click", () => openSettings("model"));
 
@@ -1206,6 +1293,7 @@ function switchSettingsTab(tab) {
   });
   if (tab === "model") loadModelSettings();
   if (tab === "governance") loadGovernanceSettings();
+  if (tab === "patrol") loadPatrolSettings();
   if (tab === "system") loadSystemStatus();
   if (tab === "plugins") loadPlugins();
   if (tab === "appearance") {
@@ -1269,6 +1357,8 @@ async function loadGovernanceSettings() {
     $("setLease").value = g.leaseSeconds;
     $("setAttempts").value = g.deliveryMaxAttempts;
     $("setBatch").value = g.wakeBatchSize;
+    $("setBackoffBase").value = g.retryBackoffBaseSeconds;
+    $("setBackoffCap").value = g.retryBackoffCapSeconds;
   } catch (e) { toast(`读取治理设置失败:${e.message}`); }
 }
 
@@ -1284,10 +1374,50 @@ async function saveGovernanceSettings() {
         leaseSeconds: Number($("setLease").value),
         deliveryMaxAttempts: Number($("setAttempts").value),
         wakeBatchSize: Number($("setBatch").value),
+        retryBackoffBaseSeconds: Number($("setBackoffBase").value),
+        retryBackoffCapSeconds: Number($("setBackoffCap").value),
       }),
     });
     await loadGovernanceSettings();
     toast("治理参数已保存:对后续回合立即生效");
+  } catch (e) { toast(`保存失败:${e.message}`); }
+  finally { button.disabled = false; }
+}
+
+/* ---------- 设置 → 巡查(阈值/开关热调,重启保留) ---------- */
+
+const PATROL_TOGGLES = [["setPatrolEnabled", "enabled"], ["setAutoNudge", "autoNudge"],
+  ["setAutoProbe", "autoProbePaused"], ["setInjectWake", "injectWake"]];
+const PATROL_NUMBERS = [["setStalled", "stalledMinutes"], ["setUnassigned", "unassignedMinutes"],
+  ["setBacklogAge", "backlogAgeMinutes"], ["setBacklogUnread", "backlogUnread"],
+  ["setConsecutive", "consecutiveFailures"], ["setCooldown", "notifyCooldownSeconds"],
+  ["setProbeBase", "probeBaseSeconds"], ["setProbeCap", "probeCapSeconds"],
+  ["setLookback", "unverifiedLookbackMinutes"], ["setRetention", "retentionDays"]];
+
+async function loadPatrolSettings() {
+  try {
+    const p = await api("/api/settings/patrol");
+    for (const [id, key] of PATROL_TOGGLES) $(id).setAttribute("aria-pressed", String(Boolean(p[key])));
+    for (const [id, key] of PATROL_NUMBERS) $(id).value = p[key];
+  } catch (e) { toast(`读取巡查设置失败:${e.message}`); }
+}
+
+async function savePatrolSettings() {
+  if (![...document.querySelectorAll("#set-patrol input")].every(input => input.reportValidity())) return;
+  const button = $("setPatrolSave");
+  button.disabled = true;
+  try {
+    const body = Object.fromEntries([
+      ...PATROL_TOGGLES.map(([id, key]) => [key, $(id).getAttribute("aria-pressed") === "true"]),
+      ...PATROL_NUMBERS.map(([id, key]) => [key, Number($(id).value)]),
+    ]);
+    await api("/api/settings/patrol", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    await loadPatrolSettings();
+    toast("巡查配置已保存:对后续巡次立即生效");
   } catch (e) { toast(`保存失败:${e.message}`); }
   finally { button.disabled = false; }
 }
@@ -1553,6 +1683,7 @@ async function savePluginConfig(p) {
   }
   if (state.teamId) {
     await refreshAndRevealLead();
+    loadPatrol();
   }
   renderTranscript();
 })();

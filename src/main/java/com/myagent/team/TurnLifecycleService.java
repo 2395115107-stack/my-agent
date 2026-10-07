@@ -71,6 +71,7 @@ public class TurnLifecycleService {
         turn.setStatus(TeamTurn.STATUS_FAILED);
         turn.setDeliveryAttempts(turn.getDeliveryAttempts() == null ? 1 : turn.getDeliveryAttempts() + 1);
         turn.setFinishedAt(LocalDateTime.now());
+        turn.setFailReason(reason);
         turnMapper.update(turn);
         log.warn("[team] turn#{} of {} failed: {}", turn.getId(), turn.getAgentSn(), reason);
         // 蓝图 6.2 的最小实现:失败即对团队事件流可见,不等重试超限
@@ -81,6 +82,15 @@ public class TurnLifecycleService {
             return false;
         }
         return true;
+    }
+
+    /** Leader 主动中断:turn 记 FAILED 落库但不计投递重试预算(区别于 failTurn 的失败语义)。 */
+    public void abortTurn(TeamTurn turn) {
+        turn.setStatus(TeamTurn.STATUS_FAILED);
+        turn.setFinishedAt(LocalDateTime.now());
+        turn.setFailReason("interrupted by leader");
+        turnMapper.update(turn);
+        log.info("[team] turn#{} of {} aborted by leader", turn.getId(), turn.getAgentSn());
     }
 
     /** turn 成功:精确按注入的消息 ID 标已读 -> 投 Leader idle 通知 -> 事件。 */
@@ -108,6 +118,9 @@ public class TurnLifecycleService {
                 .limit(1));
         if (member != null) {
             member.setStatus(TeamMember.STATUS_PAUSED);
+            // 熔断计数:探活冷却按连续暂停次数指数增长(TeamScheduler.probePausedMembers 消费)
+            member.setPauseCount((member.getPauseCount() == null ? 0 : member.getPauseCount()) + 1);
+            member.setPausedAt(LocalDateTime.now());
             memberMapper.update(member);
             events.publish("agent_status_changed", turn.getTeamId(), member.getAgentSn() + ":PAUSED");
         }

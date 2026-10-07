@@ -33,4 +33,6 @@ public class TeamTurn {
     private LocalDateTime startedAt;
     private LocalDateTime leaseExpiresAt;
     private LocalDateTime finishedAt;
+    /** 失败原因留痕(lease expired / stream error 等),巡查诊断用 */
+    private String failReason;
 }

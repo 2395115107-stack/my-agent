@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>my-agent · 调度台</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%23232324'/><text x='16' y='22' font-size='15' text-anchor='middle' fill='%233B82F6' font-family='Montserrat,sans-serif' font-weight='600'>MA</text></svg>">
-<link rel="stylesheet" href="css/app.css?v=16">
+<link rel="stylesheet" href="css/app.css?v=17">
 </head>
 <body>
 
@@ -114,6 +114,7 @@
     <div class="dock-tabs" role="tablist">
       <button type="button" class="dock-tab on" data-tab="tasks" role="tab" aria-selected="true">任务板</button>
       <button type="button" class="dock-tab" data-tab="events" role="tab" aria-selected="false">事件流<span class="badge hidden" id="eventBadge"></span></button>
+      <button type="button" class="dock-tab" data-tab="patrol" role="tab" aria-selected="false">巡查<span class="badge hidden" id="patrolBadge"></span></button>
     </div>
 
     <section class="dock-pane on" id="tab-tasks" role="tabpanel">
@@ -124,6 +125,15 @@
     <section class="dock-pane" id="tab-events" role="tabpanel">
       <ul id="eventFeed" class="event-list" aria-live="polite"></ul>
       <div id="eventsEmpty" class="dock-empty">等待事件——唤醒、分配、汇报都会实时出现在这里。</div>
+    </section>
+
+    <section class="dock-pane" id="tab-patrol" role="tabpanel">
+      <div class="patrol-bar">
+        <span class="patrol-hint" id="patrolHint">定时自动巡查中(30s)。</span>
+        <button type="button" class="patrol-run" id="patrolRunBtn">立即巡查</button>
+      </div>
+      <ul id="patrolList" class="patrol-list"></ul>
+      <div id="patrolEmpty" class="dock-empty">暂无巡查发现 —— 任务停滞、信箱积压、槽位暂停、连续回合失败会出现在这里。</div>
     </section>
   </aside>
 
@@ -179,6 +189,7 @@
     <nav class="set-nav">
       <button type="button" class="set-item on" data-tab="model">模型</button>
       <button type="button" class="set-item" data-tab="governance">团队治理</button>
+      <button type="button" class="set-item" data-tab="patrol">巡查</button>
       <button type="button" class="set-item" data-tab="appearance">外观</button>
       <button type="button" class="set-item" data-tab="plugins">插件</button>
       <button type="button" class="set-item" data-tab="system">系统状态</button>
@@ -205,7 +216,41 @@
         <div class="field"><label for="setLease">回合租约(秒,超时判定僵死并回收重投)</label><input id="setLease" type="number" required step="1" min="30" max="2147483647"></div>
         <div class="field"><label for="setAttempts">投递重试上限(超限暂停槽位并通知 Leader)</label><input id="setAttempts" type="number" required step="1" min="1" max="2147483647"></div>
         <div class="field"><label for="setBatch">单次唤醒最多注入的未读消息数</label><input id="setBatch" type="number" required step="1" min="1" max="2147483647"></div>
+        <div class="field"><label for="setBackoffBase">失败重投退避基数(秒,第 n 次重试等待基数 × 2 的 n-2 次方 ± 抖动)</label><input id="setBackoffBase" type="number" required step="1" min="0" max="2147483647"></div>
+        <div class="field"><label for="setBackoffCap">失败重投退避封顶(秒)</label><input id="setBackoffCap" type="number" required step="1" min="1" max="2147483647"></div>
         <button class="btn solid" id="setGovernanceSave" type="button">保存</button>
+      </section>
+
+      <section class="set-pane" id="set-patrol">
+        <h4>巡查</h4>
+        <p class="set-desc">自动巡查与自愈参数,保存后对后续巡次立即生效(巡检间隔除外,需重启)。</p>
+        <div class="field row">
+          <div><label>自动巡查开关</label><p class="hint">关闭后仅「立即巡查」手动触发</p></div>
+          <button type="button" class="toggle" id="setPatrolEnabled" aria-label="自动巡查开关" aria-pressed="true"><span class="knob"></span></button>
+        </div>
+        <div class="field"><label for="setStalled">任务停滞阈值(分钟)</label><input id="setStalled" type="number" required step="1" min="1" max="2147483647"></div>
+        <div class="field"><label for="setUnassigned">无主任务滞留阈值(分钟)</label><input id="setUnassigned" type="number" required step="1" min="1" max="2147483647"></div>
+        <div class="field"><label for="setBacklogAge">信箱积压年龄阈值(分钟)</label><input id="setBacklogAge" type="number" required step="1" min="1" max="2147483647"></div>
+        <div class="field"><label for="setBacklogUnread">信箱积压数量阈值(条)</label><input id="setBacklogUnread" type="number" required step="1" min="1" max="2147483647"></div>
+        <div class="field"><label for="setConsecutive">连续回合失败阈值(次)</label><input id="setConsecutive" type="number" required step="1" min="2" max="2147483647"></div>
+        <div class="field"><label for="setCooldown">告警冷却窗(秒,同发现重复通知 Leader 的间隔)</label><input id="setCooldown" type="number" required step="1" min="0" max="2147483647"></div>
+        <div class="field row">
+          <div><label>停滞任务自动催办</label><p class="hint">对停滞任务 owner 重投任务通知</p></div>
+          <button type="button" class="toggle" id="setAutoNudge" aria-label="自动催办" aria-pressed="true"><span class="knob"></span></button>
+        </div>
+        <div class="field row">
+          <div><label>熔断半开自动探活</label><p class="hint">暂停槽位到期自动试一回合,失败回暂停且冷却翻倍</p></div>
+          <button type="button" class="toggle" id="setAutoProbe" aria-label="自动探活" aria-pressed="true"><span class="knob"></span></button>
+        </div>
+        <div class="field"><label for="setProbeBase">探活冷却基数(秒,按连续暂停次数翻倍)</label><input id="setProbeBase" type="number" required step="1" min="10" max="2147483647"></div>
+        <div class="field"><label for="setProbeCap">探活冷却封顶(秒)</label><input id="setProbeCap" type="number" required step="1" min="10" max="2147483647"></div>
+        <div class="field row">
+          <div><label>Leader 唤醒注入巡查简报</label><p class="hint">唤醒上下文附带当前未解决发现</p></div>
+          <button type="button" class="toggle" id="setInjectWake" aria-label="巡查简报" aria-pressed="true"><span class="knob"></span></button>
+        </div>
+        <div class="field"><label for="setLookback">完成核验回看窗(分钟)</label><input id="setLookback" type="number" required step="1" min="5" max="2147483647"></div>
+        <div class="field"><label for="setRetention">已解除发现保留天数</label><input id="setRetention" type="number" required step="1" min="1" max="3650"></div>
+        <button class="btn solid" id="setPatrolSave" type="button">保存</button>
       </section>
 
       <section class="set-pane" id="set-appearance">
@@ -278,6 +323,6 @@
 
 <div class="toast hidden" id="toast" role="status"></div>
 
-<script src="js/app.js?v=20"></script>
+<script src="js/app.js?v=22"></script>
 </body>
 </html>

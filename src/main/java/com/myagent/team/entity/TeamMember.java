@@ -30,5 +30,9 @@ public class TeamMember {
     /** 成员系统提示词(spawn 时写入;Leader 是治理提示词) */
     private String systemPrompt;
     private String status;
+    /** 连续暂停次数(熔断探活冷却按此指数退避;人工恢复清零) */
+    private Integer pauseCount;
+    /** 最近一次进入 PAUSED 的时间(探活窗起点) */
+    private LocalDateTime pausedAt;
     private LocalDateTime createdAt;
 }

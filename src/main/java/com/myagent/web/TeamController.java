@@ -109,12 +109,15 @@ public class TeamController {
         return support.membersPayload(teamId);
     }
 
-    /** 恢复已暂停成员的槽位,并立即对账处理其信箱积压。 */
+    /** 恢复已暂停成员的槽位,并立即对账处理其信箱积压。人工恢复 = 熔断计数清零(区别于自动探活)。 */
     @PostMapping("/{teamId}/members/{agentSn}/resume")
     public Map<String, Object> resume(@PathVariable Long teamId, @PathVariable String agentSn) {
         TeamMember member = support.requireMember(teamId, agentSn);
         member.setStatus(TeamMember.STATUS_ACTIVE);
-        memberMapper.update(member);
+        member.setPauseCount(0);
+        member.setPausedAt(null);
+        // ignoreNulls=false:paused_at 必须真正写回 NULL,否则残留旧值
+        memberMapper.update(member, false);
         events.publish("agent_status_changed", teamId, agentSn + ":ACTIVE");
         scheduler.kick(teamId, agentSn);
         return Map.of("sn", agentSn, "status", TeamMember.STATUS_ACTIVE);
