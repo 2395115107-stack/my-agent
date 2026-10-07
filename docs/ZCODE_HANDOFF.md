@@ -62,3 +62,82 @@
 另修:Mock 直聊文案指向设置页开关(原提 LLM_MOCK=true)。前端资源版本 v=9(本轮实际 v=9→v=10 起过两版,以 index.html 为准)。
 
 运行状态:8070,模型 = Mock 开(库内持久化),治理 600/3/50,替身 9311 可关。下一轮入口不变(见 HARNESS_PARITY.md):会话目录/历史、消息 Markdown、审批 HITL。
+
+## 2026-10-03 深夜(第四轮:服务端会话历史 + Markdown,对齐 dsh 会话语义)
+
+按 HARNESS_PARITY 建议顺序落地「会话与聊天」核心项:
+
+1. **服务端历史**:新表 tbl_chat_message(agent_sn/thread_id/role/content);ChatStore 落库;AgentChatService 统一记录(直聊与团队回合都落,用户消息即时、助手输出随流累积完成时落)。历史成为真相源,localStorage 不再存消息(仅存当前会话指针/主题/字号)。
+2. **会话目录**:侧栏"历史会话"区(选中成员时显示),标题=首条用户消息(团队回合加前缀),含条数;点击切换、悬停 ✕ 删除(删消息记录,不动图检查点)。「新对话」= 指针置空,旧会话保留在目录可切回(dsh 会话语义)。
+3. **Markdown**:自写安全迷你渲染器(转义优先;代码块/行内代码/标题/粗体/斜体/列表/链接),助手消息最终态按 Markdown 渲染,流式期间纯文本。
+4. **复制**:每条 user/assistant 悬停出现"复制"。
+
+实测:跨刷新历史恢复 ✓、会话切换/删除 ✓、Markdown 各语法 ✓、复制 ✓;修复渲染竞态(transcriptToken 令牌,init 与 selectPeer 并发渲染曾导致条目翻倍)。字段备忘:membersPayload/历史接口均为 {sn|role|content};测试 7/7。
+
+下一轮入口(见 HARNESS_PARITY.md):消息重试/编辑、工具调用过程折叠、审批 HITL、附件与文件 dock。
+
+## 2026-10-03 深夜(第五轮:普通对话与项目)
+
+落地用户「普通对话和项目」需求(dsh workspace 的映射):
+
+1. **项目**:tbl_project + `GET/POST/DELETE /api/project`;侧栏顶部项目选择器(全部会话 / 普通对话 / 各项目,带会话计数),建项目对话框,删除项目时其会话自动回到普通对话。
+2. **会话登记表**:tbl_session(thread_id 主键,project_id,title)成为目录/标题/项目归属的权威来源;ChatStore.ensureSession 在首条用户消息时创建(幂等);sessions() 自动导入历史遗留会话。
+3. **归属语义(dsh 同款)**:会话的项目归属在创建时确定;项目上下文变化或过滤视图找不到当前会话 → 下次发送自动开新会话。实测:项目视图发的消息归项目,普通对话视图发的消息不分组,互不混。
+4. 聊天请求体带 projectId(AgentProfile 新字段);团队回合 project_id = null(项目与团队是并列维度,打通属后续)。
+
+实测:建项目/过滤/归属/删除回归 ✓;测试 7/7;前端 v=15。下一轮入口:消息重试/编辑、工具调用过程折叠、审批 HITL(见 HARNESS_PARITY.md)。
+
+## 2026-10-04 凌晨(第六轮:插件功能,对齐 dsh 插件面)
+
+落地用户「插件功能」需求。dsh 的 pnpm/组合包安装生态不适用于单体 jar,采用其「官方组合包」语义:随应用附带、默认关闭、无卸载,只做启停与配置。
+
+1. **内核** `com.myagent.plugin`:`AgentPlugin` SPI(key/title/description/version/experimental/configFields/toolBeans)、`PluginService`(启停/配置校验/持久化到 tbl_setting 的 `plugin.states`/管理视图与只读清单投影;写操作先校验后落库,失败不动运行态)、`AgentRebuildService`(状态变更成功后热重建全部 Agent)。
+2. **工具注入**:`AbstractTeamAgent.build()` 与 `SpawnService.registerMember` 把启用插件的 @Tool 对象并入 methodTools(全局作用域 = 所有 Agent);启停/改配置即时重建,进行中的回合持旧引用跑完(与模型热切换同语义)。静态 bean 各自 `rebuildAndRegister`,`SpawnService.rebuildAllSpawned` 跳过静态 sn 防止用成员工具集覆盖 Leader。
+3. **内置插件 3 个**:plugin-datetime(时区可配)、plugin-calculator(自写递归下降四则求值器)、plugin-web-fetch(标实验性;超时/长度上限可配;SSRF 门禁:仅 http/https、拒绝本机/内网地址、重定向逐跳复检、响应体 512KB 截断)。
+4. **API**:GET /api/plugins(管理视图)、POST /{key}/enable|disable、PUT /{key}/config、GET /api/plugins/inventory;未知 key 404、非法配置 400。
+5. **前端**(css v=14 / js v=17):侧栏「❖ 插件」页 = 官方卡片网格 + 启停 toggle + 详情页(状态行/工具清单/按 configFields 渲染的配置表单);设置「内置插件」= 只读清单(状态点、实验性/已停用/启动失败标签、跨标题/说明/工具/标识搜索、刷新);普通启用不标标签(dsh 语义)。
+
+实测:`mvn test` 28/28(新增 PluginServiceTest 8、PluginControllerTest 7、BuiltinPluginsTest 6);API 序列:非法时区 400、启停 200、改配置持久化、404、清单状态投影 ✓;浏览器实测:插件页卡片/详情/配置保存(UI 改时区 → 服务端确认 Asia/Shanghai)/Esc 关闭/停用 toast/清单搜索「调研」命中网页抓取 ✓;Mock 直聊冒烟 ✓;**跨重启恢复 ✓**(启用计算器 → 重启 → ACTIVE 保持,随后恢复全关默认)。
+
+运行实例:8070,PID 29336,日志 tools/app31.log;模型 Mock 开(库内),插件当前全部停用(出厂态)。
+
+⚠️ 本轮与另一并行会话的「消息编辑/重试」改动在 app.js 同文件交错进行(其 beginEdit 在本轮结束时仍未见定义,该功能未完成不影响插件面);README 的插件章节与 HARNESS_PARITY 插件行已同步更新。
+
+## 2026-10-04 凌晨(第七轮:Codex 客户端实用能力移植)
+
+用户需求:「看看我们集成的客户端和codex的客户端有什么区别,实用的都抄过来」。对照 OpenAI Codex CLI 0.16x 客户端(官方 slash-commands/getting-started 文档 + releases)逐项比对:采纳 8 项(排队输入、Esc 中断、编辑/重试+fork、↑/↓ 草稿历史、/ 命令面板、@ 成员引用、Ctrl+R 历史搜索、/copy+Ctrl+O);搁置 5 项(审批 /permissions、/plan、/compact、图片粘贴、! shell——分别依赖后端 HITL 审批契约、plan 模式、上下文压缩、多模态模型、PTY 终端,均不在当前后端能力内,dsh 对齐清单已含这些后续项)。
+
+后端(2 个新接口):
+1. **POST /api/agent/sessions/fork**(ChatStore.forkSession):复制源会话前 keep 条消息并登记新会话(项目归属跟随源);同时**按字节复制图检查点** —— RedisSaver 的 meta hash(`thread_id` 字段 → 内部 id)与 `graph:checkpoint:content:{内部id}` 检查点链均走 Redisson 默认 codec,fork 用同 codec get/set 复制到新内部 id 并登记 meta/reverse(`is_released` 与 saver 一致写字符串 `"false"`)。fork 后两会话检查点链独立分叉,互不串写。
+2. **GET /api/agent/sessions/search?q=**:tbl_chat_message ILIKE(转义 `%_\`),返回会话标题/成员/角色/片段,最近在前;前端结果限定当前团队花名册。
+
+前端(css v=15 / js v=19):
+- **排队输入**(Codex Tab 语义):对话模式流式期间发送自动入队,queueBar 显示 chip(可单个移除),回合结束 flushQueue 依序自动发送;信箱投递不受影响。
+- **编辑/重试 → fork**(Codex Esc×2 语义):每条历史用户消息悬停出现「编辑/重试」;提交后 POST fork、切换到新会话重发,原会话保留在目录。**修复一处初版缺陷**:重试模式空输入 Enter = 重发原文本(初版空文本被 send() 提前 return 吞掉,浏览器实测发现后修复)。
+- **Esc 分层**:插件页 > 设置 > 搜索浮层 > 候选面板 > 编辑条 > 流式中断。
+- **↑/↓ 草稿历史**(输入为空或正在浏览草稿时生效,内存保存最近 30 条)。
+- **/ 命令面板**:行首 `/` 过滤候选,↑↓+Enter 或点击执行;/mock 走 PUT settings 热切换。
+- **@ 成员引用**:文内 @token 触发花名册候选(按 sn/显示名过滤),选中即切换会话对象并移除 token——无文件工作区,Codex @文件的对齐物。
+- **Ctrl+R** 搜索浮层(300ms 防抖,结果点击跳成员+会话)、**Ctrl+O / /copy** 复制最近一条助手回复。
+
+实测:`mvn test` 22/22(本轮 Java 改动后;并行插件轮后来补到 28,Java 未再改);fork 链路 API 级验证:keep=2 消息复制正确、fork 后检查点链独立(content 字节数 4699 → 9340 = 复制 2 检查点 + fork 回合新检查点,数值精确吻合,证实上下文延续)、源会话 meta 不受影响、search 命中;浏览器实测(127.0.0.1:8070):/ 命令过滤+Enter 执行、/search→浮层→结果点击跳会话、编辑→fork 全链路、重试空 Enter、排队条→自动 flush→清空、Esc 中断(条目记"(已停止)")、@ 成员切换、↑ 草稿恢复,全部通过。备注:IAB 后台标签页 setTimeout 被节流,流式窗口类断言改用页面内探针与确定性驱动完成。
+
+运行实例:8070,本轮重建的 jar(含插件轮 + 本轮全部改动),日志 `tools/app31.log`;模型 Mock 开(库内,127.0.0.1:9311/stub-model)、治理 600/3/50;测试会话(codextest1/forktest1/fw8fjit/fazk209)已 DELETE,模型设置已恢复 mock=true。9311 替身仍在运行,不需要可关。
+
+⚠️ 并行会话交接注:上一轮(插件)记录「另一会话的 beginEdit 未见定义」——本轮已完成该功能并全量实测,app.js 现为两轮合并后的最终态(js v=19,与源文件 md5 一致),无遗留冲突。两轮改动均未提交 git,留给用户统一核验提交。
+
+### 第六轮补充(同日,应用户要求调整)
+
+用户要求「把插件放进设置里,不要直接显示出来」:已移除侧栏「❖ 插件」入口与独立插件浮层页,插件管理完整收纳进**设置 → 「插件」**——卡片启停开关 + 「配置」在卡片内行内展开(工具清单/配置表单/保存),展开态在重渲染后保持;原「内置插件」只读清单与管理视图合并为一(管理视图含清单全部信息)。前端 css v=16 / js v=20;后端 API 不变。浏览器实测:侧栏无插件入口 ✓、设置内三卡片渲染/行内展开/改时区保存/启用计算器(高亮+无标签,dsh 语义)✓,验证后已恢复全关出厂态。运行实例:8070,PID 18636,日志 tools/app32.log。
+
+## 2026-10-07(交付轮)
+
+达成「能够交付」并完成交付物独立验证:
+
+1. **启动自动建表**:schema 移入 jar(resources/schema.sql)+ `spring.sql.init.mode=always`(全部 IF NOT EXISTS 幂等);空库 `java -jar` 直启,9 张表自动创建,约 10 秒起服务。
+2. **全新库交付验证**:myagent_delivery 空库 → 直启 → 建项目/mock 直聊/建团队/挂成员/投目标 → 任务 COMPLETED 全链路 → 清理(库已删)。
+3. **交付物打包**:`scripts/package-dist.sh` → `dist/my-agent-0.1.0.zip`(jar + README-DELIVERY + .env.example + sql_schema + start/stop 脚本)。
+4. **交付物独立验证**:zip 解包到临时目录,按交付说明对另一空库直启 → 自动建表 + 建项目 + mock 直聊全通。交付物不依赖工作区。
+5. 交付默认配置:DeepSeek 端点 + Mock 开(演示即用);插真实 Key 在设置页热切换即可。
+
+运行状态:8070(工作区实例,myagent 库);交付物:dist/my-agent-0.1.0.zip。前端 v=16;静态资源 no-cache 头已由 StaticCacheConfig 统一设置(注意:测试期间发现侧栏多了「插件」入口,系并行会话添加,未改动)。

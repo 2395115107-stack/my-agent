@@ -12,4 +12,6 @@ public class AgentProfile {
     private String userId;
     private String sessionId;
     private String displayName;
+    /** 普通对话归属的项目(null = 不归项目/团队回合) */
+    private Long projectId;
 }

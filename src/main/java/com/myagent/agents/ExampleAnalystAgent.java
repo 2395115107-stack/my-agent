@@ -5,6 +5,7 @@ import com.myagent.config.ModelFactory;
 import com.myagent.engine.AbstractTeamAgent;
 import com.myagent.engine.AgentRegistry;
 import com.myagent.engine.UsageInterceptor;
+import com.myagent.plugin.PluginService;
 import com.myagent.team.MailboxService;
 import com.myagent.team.TaskBoardService;
 import com.myagent.team.TeamToolSupport;
@@ -27,9 +28,10 @@ public class ExampleAnalystAgent extends AbstractTeamAgent {
     private final MailboxService mailboxService;
 
     public ExampleAnalystAgent(AgentRegistry registry, RedisSaver saver, ModelFactory modelFactory,
-                               UsageInterceptor usageInterceptor, TeamToolSupport support,
+                               UsageInterceptor usageInterceptor, PluginService pluginService,
+                               TeamToolSupport support,
                                TaskBoardService taskBoardService, MailboxService mailboxService) {
-        super(registry, saver, modelFactory, usageInterceptor);
+        super(registry, saver, modelFactory, usageInterceptor, pluginService);
         this.support = support;
         this.taskBoardService = taskBoardService;
         this.mailboxService = mailboxService;

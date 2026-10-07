@@ -33,6 +33,7 @@ public class AgentChatController {
         private String sessionId;
         private String message;
         private String userId;
+        private Long projectId;
     }
 
     @PostMapping(value = "/chat", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
@@ -40,6 +41,7 @@ public class AgentChatController {
         AgentProfile profile = AgentProfile.builder()
                 .userId(request.getUserId() == null ? "anonymous" : request.getUserId())
                 .sessionId(request.getSessionId() == null ? "web-" + System.currentTimeMillis() : request.getSessionId())
+                .projectId(request.getProjectId())
                 .build();
         return chatService.stream(request.getSn(), request.getMessage(), profile)
                 .map(output -> {

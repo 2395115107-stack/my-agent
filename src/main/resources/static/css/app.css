@@ -214,6 +214,29 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 
 .side-empty { color: var(--text-3); font-size: 12.5px; line-height: 1.7; padding: 4px 8px; }
 
+/* 会话目录(选中成员的历史会话) */
+.session-dir { display: flex; flex-direction: column; gap: 2px; }
+.session-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 8px 6px 14px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  color: var(--text-2);
+  border: 1px solid transparent;
+}
+.session-row:hover { background: var(--bg-layer-2); color: var(--text-1); }
+.session-row.on { background: var(--bg-layer-2); color: var(--text-1); border-color: var(--border-1); }
+.sess-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; }
+.sess-meta { font-family: var(--font-code); font-size: 10px; color: var(--text-3); flex: none; }
+.sess-del {
+  flex: none; width: 18px; height: 18px;
+  display: none; place-items: center;
+  color: var(--text-3); font-size: 11px;
+  border-radius: var(--r-xs);
+}
+.session-row:hover .sess-del { display: grid; }
+.sess-del:hover { background: var(--danger-soft); color: var(--danger); }
+
 .side-foot {
   margin: 8px 12px 12px;
   padding: 9px 12px;
@@ -230,8 +253,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .frame.side-collapsed .sidebar { width: 56px; }
 .frame.side-collapsed .brand-text,
 .frame.side-collapsed .new-chat-text,
-.frame.side-collapsed .side-label,
-.frame.side-collapsed .mini-btn,
+.frame.side-collapsed .sidebar .side-label,
+.frame.side-collapsed .sidebar .mini-btn,
 .frame.side-collapsed .s-name,
 .frame.side-collapsed .s-sn,
 .frame.side-collapsed .s-role,
@@ -250,6 +273,37 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 /* ---------- 中栏 ---------- */
 
 .center { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--bg-base); }
+
+/* 团队切换条:会话区顶部居中(dsh workspace 切换的映射) */
+.team-bar {
+  display: flex; align-items: center; justify-content: center;
+  gap: 10px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border-1);
+  flex: none;
+  flex-wrap: wrap;
+}
+.team-bar-label {
+  font-family: var(--kai, var(--font-ui));
+  font-size: 12px; color: var(--text-3); letter-spacing: 2px;
+}
+.team-pills { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: center; }
+.team-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12.5px; color: var(--text-2);
+  border: 1px solid var(--border-2);
+  border-radius: 999px;
+  padding: 4px 14px;
+}
+.team-pill:hover { background: var(--bg-layer-2); color: var(--text-1); }
+.team-pill.on {
+  background: var(--accent-soft);
+  border-color: rgba(59, 130, 246, 0.45);
+  color: var(--text-1);
+}
+.team-pill .tid { font-family: var(--font-code); font-size: 10.5px; color: var(--text-3); }
+.team-pill.on .tid { color: var(--accent-hover); }
+.team-pill-hint { font-size: 12px; color: var(--text-3); }
 
 .conv-head {
   display: flex; align-items: center; justify-content: space-between;
@@ -325,6 +379,47 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   animation: caret 1s steps(1) infinite;
 }
 @keyframes caret { 50% { opacity: 0; } }
+
+/* 消息操作:悬停出现复制 */
+.entry-copy {
+  font-size: 10.5px; color: var(--text-3);
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--border-2);
+  opacity: 0;
+  transition: opacity var(--dur) var(--ease);
+}
+.entry:hover .entry-copy { opacity: 1; }
+.entry-copy:hover { color: var(--text-1); border-color: var(--border-3); }
+
+/* Markdown(dsh 消息渲染的基础子集) */
+.entry-agent .entry-body p { margin: 0 0 8px; }
+.entry-agent .entry-body p:last-child { margin-bottom: 0; }
+.entry-agent .entry-body h3, .entry-agent .entry-body h4 {
+  margin: 10px 0 6px;
+  font-family: var(--font-brand); font-weight: 500;
+}
+.entry-agent .entry-body h3 { font-size: 15px; }
+.entry-agent .entry-body h4 { font-size: 14px; }
+.entry-agent .entry-body ul { margin: 4px 0 8px; padding-left: 20px; }
+.entry-agent .entry-body li { margin: 2px 0; }
+.entry-agent .entry-body .md-inline {
+  font-family: var(--font-code); font-size: 0.88em;
+  background: var(--bg-layer-2);
+  border-radius: var(--r-xs);
+  padding: 1px 5px;
+}
+.entry-agent .entry-body .md-code {
+  font-family: var(--font-code); font-size: 12px;
+  background: var(--bg-base);
+  border: 1px solid var(--border-1);
+  border-radius: var(--r-sm);
+  padding: 10px 12px;
+  overflow-x: auto;
+  margin: 8px 0;
+  line-height: 1.55;
+}
+.entry-agent .entry-body a { color: var(--accent-hover); }
 
 .empty-state { margin: 14vh auto 0; text-align: center; max-width: 46ch; padding: 0 24px; }
 .empty-title { font-family: var(--font-brand); font-weight: 500; font-size: 16px; margin: 0 0 8px; }
@@ -627,3 +722,215 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 ::-webkit-scrollbar-thumb { background: var(--bg-layer-3); border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--border-3); }
 ::-webkit-scrollbar-track { background: transparent; }
+
+/* ---------- 设置 → 插件(启停/配置/清单收纳在设置抽屉内) ---------- */
+
+.inv-toolbar { display: flex; gap: 8px; margin: 12px 0 4px; }
+.inv-toolbar input {
+  flex: 1;
+  background: var(--bg-base); color: var(--text-1);
+  border: 1px solid var(--border-2);
+  border-radius: var(--r-sm);
+  padding: 8px 10px; font: inherit;
+}
+.inv-list { display: flex; flex-direction: column; gap: 10px; }
+.inv-card {
+  background: var(--bg-layer-2);
+  border: 1px solid var(--border-1);
+  border-radius: var(--r-lg);
+  padding: 13px 16px;
+}
+.inv-card.on { border-color: var(--accent); }
+
+.pc-head { display: flex; align-items: center; gap: 10px; }
+.pc-icon {
+  width: 34px; height: 34px; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--bg-layer-3);
+  border-radius: var(--r-sm);
+  font-size: 17px;
+}
+.pc-title-wrap { flex: 1; min-width: 0; }
+.pc-title { display: flex; align-items: center; gap: 7px; font-weight: 500; font-size: 13.5px; flex-wrap: wrap; }
+.pc-ver { font-size: 11px; color: var(--text-3); font-weight: 400; }
+.pc-key { font-size: 11px; color: var(--text-3); margin-top: 1px; }
+.pc-badge {
+  font-size: 10.5px; padding: 1px 7px;
+  border-radius: 999px; font-weight: 400;
+  border: 1px solid var(--border-2); color: var(--text-2);
+}
+.pc-badge.exp { color: #D97706; border-color: rgba(217, 119, 6, 0.45); }
+.pc-badge.off { color: var(--text-3); }
+.pc-badge.err { color: var(--danger); border-color: rgba(239, 68, 68, 0.45); }
+.pc-desc {
+  margin: 10px 0 0;
+  font-size: 12.5px; color: var(--text-2);
+}
+.pc-foot { display: flex; align-items: center; gap: 10px; margin-top: 10px; font-size: 11.5px; color: var(--text-3); }
+.pc-foot .mini-btn { margin-left: auto; }
+.pc-err { color: var(--danger); font-size: 11.5px; margin-top: 6px; }
+
+/* 卡片内展开区:工具清单 + 配置表单 */
+.pd-inline { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-1); }
+.pd-status {
+  margin-top: 10px; padding: 8px 12px;
+  background: var(--danger-soft); color: var(--danger);
+  border-radius: var(--r-sm); font-size: 12.5px;
+}
+.pd-section { margin-top: 12px; }
+.pd-section h5 {
+  margin: 0 0 8px; font-size: 12px; font-weight: 500;
+  color: var(--text-3); text-transform: uppercase; letter-spacing: 0.04em;
+}
+.pd-tools { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.pd-tool {
+  display: flex; flex-direction: column; gap: 2px;
+  background: var(--bg-base);
+  border: 1px solid var(--border-1);
+  border-radius: var(--r-sm);
+  padding: 9px 12px; font-size: 12.5px; color: var(--text-2);
+}
+.pd-tool code { font-family: var(--font-code); font-size: 12px; color: var(--accent); }
+.pd-form .btn { margin-top: 14px; }
+
+/* ===== Codex 客户端同款交互:排队 / 编辑分叉 / 命令面板 / 历史搜索 ===== */
+
+/* 消息操作(复制/重试/编辑):悬停出现,与 .entry-copy 同款 */
+.entry-act {
+  font-size: 10.5px; color: var(--text-3);
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--border-2);
+  opacity: 0;
+  transition: opacity var(--dur) var(--ease);
+}
+.entry:hover .entry-act { opacity: 1; }
+.entry-act:hover { color: var(--accent-hover); border-color: var(--accent-hover); }
+.entry-user .entry-head .entry-act { margin-right: 2px; }
+
+/* 排队条(Codex Tab 排队语义):输入卡上方 */
+.queue-bar {
+  max-width: 748px; margin: 0 auto 8px;
+  display: flex; align-items: center; flex-wrap: wrap; gap: 6px;
+  font-size: 11.5px; color: var(--text-2);
+}
+.queue-bar.hidden { display: none; }
+.queue-label { color: var(--text-3); }
+.queue-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--accent-soft);
+  border: 1px solid rgba(59, 130, 246, 0.35);
+  border-radius: 999px;
+  padding: 2px 4px 2px 10px;
+  color: var(--text-1);
+}
+.queue-del {
+  font-size: 10px; color: var(--text-3);
+  width: 16px; height: 16px; line-height: 1;
+  border-radius: 50%;
+}
+.queue-del:hover { color: var(--danger); background: var(--bg-layer-3); }
+
+/* 编辑分叉条(Codex Esc×2):输入卡上方,蓝色提示 */
+.edit-banner {
+  max-width: 748px; margin: 0 auto 8px;
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  background: var(--accent-soft);
+  border: 1px solid rgba(59, 130, 246, 0.35);
+  border-radius: var(--r-md);
+  padding: 7px 12px;
+  font-size: 12px; color: var(--text-1);
+}
+.edit-banner.hidden { display: none; }
+.edit-tip { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.edit-cancel {
+  flex: none;
+  font-size: 11px; color: var(--accent-hover);
+  padding: 2px 8px;
+  border: 1px solid rgba(59, 130, 246, 0.4);
+  border-radius: 999px;
+}
+.edit-cancel:hover { background: rgba(59, 130, 246, 0.18); }
+
+/* 候选面板(/ 命令与 @ 成员):输入卡内浮动 */
+.composer-card { position: relative; }
+.palette {
+  position: absolute;
+  left: 12px; right: 12px;
+  bottom: calc(100% + 6px);
+  background: var(--bg-layer-2);
+  border: 1px solid var(--border-2);
+  border-radius: var(--r-md);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+  padding: 6px;
+  z-index: 30;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.palette.hidden { display: none; }
+.palette-item {
+  display: flex; align-items: baseline; gap: 10px;
+  padding: 7px 10px;
+  border-radius: var(--r-sm);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.palette-item:hover, .palette-item.on { background: var(--bg-layer-3); }
+.palette-name { color: var(--text-1); font-weight: 500; white-space: nowrap; }
+.palette-name.mono { font-family: var(--font-code); font-size: 12px; color: var(--accent-hover); }
+.palette-desc { color: var(--text-3); font-size: 11.5px; margin-left: auto; text-align: right; }
+
+/* 历史搜索浮层(Codex Ctrl+R) */
+.search-mask {
+  position: fixed; inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 40;
+}
+.search-mask.hidden { display: none; }
+.search-overlay {
+  position: fixed;
+  top: 12vh; left: 50%;
+  transform: translateX(-50%);
+  width: min(640px, calc(100vw - 32px));
+  max-height: 68vh;
+  display: flex; flex-direction: column;
+  background: var(--bg-layer-1);
+  border: 1px solid var(--border-2);
+  border-radius: var(--r-lg);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
+  z-index: 41;
+  overflow: hidden;
+}
+.search-overlay.hidden { display: none; }
+.search-head-bar {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-1);
+}
+.search-head-bar input {
+  flex: 1;
+  background: var(--bg-layer-2);
+  border: 1px solid var(--border-1);
+  border-radius: var(--r-sm);
+  color: var(--text-1);
+  font: 13.5px/1.5 var(--font-ui);
+  padding: 8px 12px;
+}
+.search-head-bar input:focus { outline: none; border-color: rgba(59, 130, 246, 0.5); }
+.search-list { overflow-y: auto; padding: 8px; }
+.search-item {
+  padding: 9px 12px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.search-item:hover { background: var(--bg-layer-2); }
+.search-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 2px; }
+.search-title {
+  font-size: 12.5px; font-weight: 500; color: var(--text-1);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.search-sn { margin-left: auto; flex: none; font-size: 10.5px; color: var(--text-3); }
+.search-snippet {
+  font-size: 11.5px; color: var(--text-2);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}

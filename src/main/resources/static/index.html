@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>my-agent · 调度台</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%23232324'/><text x='16' y='22' font-size='15' text-anchor='middle' fill='%233B82F6' font-family='Montserrat,sans-serif' font-weight='600'>MA</text></svg>">
-<link rel="stylesheet" href="css/app.css?v=9">
+<link rel="stylesheet" href="css/app.css?v=16">
 </head>
 <body>
 
@@ -28,16 +28,24 @@
     <div class="side-scroll">
       <div class="side-section">
         <div class="side-label-row">
-          <span class="side-label">团队</span>
-          <button class="mini-btn" id="btnNewTeam" type="button">建团队</button>
+          <span class="side-label">项目</span>
+          <button class="mini-btn" id="btnNewProject" type="button">建项目</button>
         </div>
-        <div id="teamList" class="team-list"></div>
+        <div id="projectList" class="team-list"></div>
       </div>
 
       <div class="side-section grow">
         <div class="side-label-row"><span class="side-label">成员会话</span></div>
         <ul id="rosterList" class="session-list" aria-live="polite"></ul>
         <div id="rosterEmpty" class="side-empty hidden">还没有成员。点下方「加入成员」,或建一个团队让 Leader 入列。</div>
+      </div>
+
+      <div class="side-section hidden" id="sessionSection">
+        <div class="side-label-row">
+          <span class="side-label">历史会话</span>
+          <button class="mini-btn" id="btnNewSession" type="button">新对话</button>
+        </div>
+        <div id="sessionList" class="session-dir"></div>
       </div>
     </div>
 
@@ -51,8 +59,13 @@
 
   <button class="rail-expand" id="expandBtn" type="button" title="展开侧栏" aria-label="展开侧栏">⟩</button>
 
-  <!-- 中栏:会话 -->
+  <!-- 中栏:会话(顶部居中:团队切换条) -->
   <main class="center">
+    <div class="team-bar">
+      <span class="team-bar-label">团队</span>
+      <div id="teamList" class="team-pills"></div>
+      <button class="mini-btn" id="btnNewTeam" type="button">＋ 建团队</button>
+    </div>
     <header class="conv-head">
       <div class="peer">
         <span class="peer-dot" id="peerDot"></span>
@@ -63,6 +76,7 @@
       </div>
       <div class="head-actions">
         <button class="tool-btn resume hidden" id="btnResume" type="button" title="恢复该成员的槽位并处理信箱积压">恢复槽位</button>
+        <button class="tool-btn" id="btnSearch" type="button" title="搜索历史消息 (Ctrl+R)">搜索</button>
         <button class="tool-btn" id="rightToggle" type="button" aria-pressed="true" title="任务板 / 事件流">面板</button>
       </div>
     </header>
@@ -75,7 +89,10 @@
     </div>
 
     <div class="composer-zone">
+      <div class="queue-bar hidden" id="queueBar"></div>
+      <div class="edit-banner hidden" id="editBanner"></div>
       <div class="composer-card">
+        <div class="palette hidden" id="palette" role="listbox"></div>
         <div class="composer-top">
           <div class="seg" id="modeSeg" role="tablist">
             <button type="button" class="seg-btn on" data-mode="chat" role="tab" aria-selected="true">对话</button>
@@ -163,6 +180,7 @@
       <button type="button" class="set-item on" data-tab="model">模型</button>
       <button type="button" class="set-item" data-tab="governance">团队治理</button>
       <button type="button" class="set-item" data-tab="appearance">外观</button>
+      <button type="button" class="set-item" data-tab="plugins">插件</button>
       <button type="button" class="set-item" data-tab="system">系统状态</button>
     </nav>
 
@@ -210,6 +228,16 @@
         </div>
       </section>
 
+      <section class="set-pane" id="set-plugins">
+        <h4>插件</h4>
+        <p class="set-desc">内置插件随应用附带、默认关闭;启用后其工具注入所有 Agent,启停与配置即时生效。</p>
+        <div class="inv-toolbar">
+          <input id="invSearch" type="search" placeholder="搜索标题、说明、工具或标识…" maxlength="100">
+          <button class="btn ghost" id="invRefresh" type="button">刷新</button>
+        </div>
+        <div id="invList" class="inv-list"><div class="dock-empty">尚未读取。</div></div>
+      </section>
+
       <section class="set-pane" id="set-system">
         <h4>系统状态</h4>
         <div id="systemStatus" class="status-rows">加载中…</div>
@@ -219,8 +247,37 @@
   </div>
 </aside>
 
+<!-- 建项目 -->
+<dialog id="projectDialog" class="dialog">
+  <h3>建项目</h3>
+  <div class="field">
+    <label for="projectName">项目名称</label>
+    <input id="projectName" type="text" placeholder="如:Weaviate 选型" maxlength="64">
+    <p class="hint">项目用来组织普通对话;会话目录按项目过滤,删除项目时会话回到「普通对话」。</p>
+  </div>
+  <div class="field">
+    <label for="projectDesc">描述(可选)</label>
+    <input id="projectDesc" type="text" maxlength="200">
+  </div>
+  <menu class="dialog-actions">
+    <button class="btn ghost" id="projectCancel" type="button">取消</button>
+    <button class="btn solid" id="projectCreate" type="button">创建</button>
+  </menu>
+</dialog>
+
+<!-- 历史搜索浮层(Codex Ctrl+R 语义) -->
+<div class="search-mask hidden" id="searchMask"></div>
+<section class="search-overlay hidden" id="searchOverlay" role="dialog" aria-label="搜索历史消息">
+  <header class="search-head-bar">
+    <input id="searchInput" type="search" placeholder="搜索全部历史消息…(Enter 确认,Esc 关闭)" maxlength="120">
+    <button class="icon-btn" id="searchClose" title="关闭 (Esc)">✕</button>
+  </header>
+  <div id="searchResults" class="search-list"></div>
+  <div id="searchEmpty" class="dock-empty">输入关键词,搜索全部历史消息</div>
+</section>
+
 <div class="toast hidden" id="toast" role="status"></div>
 
-<script src="js/app.js?v=10"></script>
+<script src="js/app.js?v=20"></script>
 </body>
 </html>

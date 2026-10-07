@@ -7,3 +7,4 @@ docs/evidence/
 !.env.example
 *.iml
 .idea/
+dist/

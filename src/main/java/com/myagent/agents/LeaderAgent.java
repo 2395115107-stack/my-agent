@@ -5,6 +5,7 @@ import com.myagent.config.ModelFactory;
 import com.myagent.engine.AbstractTeamAgent;
 import com.myagent.engine.AgentRegistry;
 import com.myagent.engine.UsageInterceptor;
+import com.myagent.plugin.PluginService;
 import com.myagent.team.tools.LeaderTeamTools;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
@@ -21,8 +22,9 @@ public class LeaderAgent extends AbstractTeamAgent {
     private final LeaderTeamTools leaderTeamTools;
 
     public LeaderAgent(AgentRegistry registry, RedisSaver saver, ModelFactory modelFactory,
-                       UsageInterceptor usageInterceptor, LeaderTeamTools leaderTeamTools) {
-        super(registry, saver, modelFactory, usageInterceptor);
+                       UsageInterceptor usageInterceptor, PluginService pluginService,
+                       LeaderTeamTools leaderTeamTools) {
+        super(registry, saver, modelFactory, usageInterceptor, pluginService);
         this.leaderTeamTools = leaderTeamTools;
     }
 

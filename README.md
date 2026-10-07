@@ -1,5 +1,7 @@
 # my-agent 自研骨架 v0.1
 
+> **交付**:见 [README-DELIVERY.md](README-DELIVERY.md)(三步运行/配置表/验收清单/已知边界);交付包构建:`bash scripts/package-dist.sh` → `dist/my-agent-0.1.0.zip`。
+
 自研智能体平台的第一块可运行地基:**Phoenix 引擎范式 × AionUi 团队分配机制**(架构依据见
 `D:/Users/nixiang-zocode/phoenix-analysis/融合架构蓝图_PhoenixxAionUi.md`,实现细节逐条对齐两份逆向报告的 `文件:行号` 证据)。
 内置 Web 客户端「调度台」,交互范式参考 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的 Web 客户端。
@@ -26,7 +28,9 @@
 - 「新对话」= 给当前成员换 sessionId(服务端记忆按 threadId 隔离);本地会话记录存 localStorage。
 - 成员失败重试、槽位 PAUSED 等可靠性语义全部经由事件流实时可见(含 `turn_failed` 事件,对应蓝图 6.2 的最小实现)。
 
-为客户端新增的后端接口:`GET /api/team`(团队列表)、`GET /api/agents`(注册表目录)、`turn_failed` SSE 事件。
+输入交互(对齐 OpenAI Codex 客户端的实用集,2026-10-04):**排队输入**(回合流式期间继续发送,自动排队并在回合结束后依序发出)、**编辑/重试**(任意历史用户消息悬停出「编辑/重试」,发送后 fork 出新会话——服务端复制消息与图检查点,上下文延续、原会话保留;Codex Esc×2 语义)、**Esc 中断**当前回合、**↑/↓ 草稿历史**、**/ 命令面板**(行首 `/`:new/copy/model/mock/theme/tasks/events/resume/search)、**@ 成员引用**(候选菜单,选中即切换会话对象)、**Ctrl+R** 历史搜索浮层(跨会话消息检索)、**Ctrl+O / /copy** 复制最近回复。
+
+为客户端新增的后端接口:`GET /api/team`(团队列表)、`GET /api/agents`(注册表目录)、`GET /api/team/{id}/members`(含未读数)、`POST /api/team/{id}/members/{sn}/resume`(恢复暂停槽位并处理积压)、`POST /api/agent/sessions/fork`(消息+检查点复制分叉)、`GET /api/agent/sessions/search`(历史搜索)、`turn_failed` SSE 事件;启动时自动从花名册恢复动态成员注册。
 
 ### 设置页
 
@@ -42,6 +46,18 @@
 模型与治理配置保存在 PostgreSQL 的 `tbl_setting`，启动时覆盖对应的环境变量默认值；若首次升级已有数据库，运行现有 SchemaLoader 导入更新后的 `sql/schema.sql`（建表语句幂等）。无效输入会被页面阻止，直接调用 API 也会得到 `400` 和原因。构建模型或数据库保存失败时，已有运行时配置保持原值。
 
 接口：`GET/PUT /api/settings/model`、`GET/PUT /api/settings/team`、`GET /api/settings/status`。
+
+## 插件(对齐 dsh ui-plugin-manager / plugin-inventory)
+
+插件管理收纳在**设置 → 「插件」**里,不占用侧栏入口:卡片列表(图标/版本/启停开关/「实验性 · 已停用 · 启动失败」标签),「配置」在卡片内行内展开工具清单与配置表单 —— 全部操作不离开设置抽屉;dsh 语义:普通启用不标标签。
+
+- 内置 3 个工具插件,默认关闭;启用后其 @Tool 方法注入**所有 Agent**(全局作用域),启停/改配置即时热重建,进行中的回合继续用旧工具集跑完(与模型热切换同语义):
+  - **plugin-datetime 时间与时区**:当前日期时间/星期/时区,时区可配;
+  - **plugin-calculator 计算器**:四则/括号/小数表达式求值,数字计算不靠模型心算;
+  - **plugin-web-fetch 网页抓取**(实验性):公开网页转正文,超时/长度上限可配;仅 http/https、拒绝本机/内网地址、重定向逐跳复检。
+- 插件状态持久化在 `tbl_setting` 的 `plugin.states`,重启恢复;配置由服务端按字段模式校验(类型/边界/未知字段一律 400),先探针后落库,失败不动运行态。
+- 接口:`GET /api/plugins`(管理视图)、`POST /api/plugins/{key}/enable|disable`、`PUT /api/plugins/{key}/config`、`GET /api/plugins/inventory`(只读清单)。
+- 扩展方式:实现 `com.myagent.plugin.AgentPlugin` 接口并标 `@Component`,即成为随附的官方插件(dsh 的 pnpm 组合包安装生态不适用于单体 jar,故不做安装/卸载)。
 
 完整 DeepSeek Harness 功能对齐进度见 [能力清单](docs/HARNESS_PARITY.md)；ZCode 后续继续前先读 [交接检查点](docs/ZCODE_HANDOFF.md)。
 
@@ -60,6 +76,7 @@
 | 运行时 spawn 成员 | `team/SpawnService` | AionUi `provisioning.rs` |
 | 团队实时事件(SSE) | `web/TeamEventController` `team/TeamEventPublisher` | AionUi 19 个 team.* 事件(最小子集) |
 | 治理提示词(分配纪律/唤醒纪律/sn 纪律) | `resources/prompts/*.st` | AionUi 内嵌系统提示词(逆向提取) |
+| 插件面(启停/配置/只读清单/工具注入热重建) | `plugin/PluginService` `plugin/AgentRebuildService` `web/PluginController` | dsh `ui-plugin-manager` / `ui-settings-plugin-inventory`(官方组合包语义) |
 
 ## 环境要求
 

@@ -4,6 +4,16 @@ server:
 spring:
   application:
     name: my-agent
+  sql:
+    init:
+      # 交付即用:启动时幂等建表(classpath schema.sql 全部 IF NOT EXISTS),空库直启
+      mode: always
+  web:
+    resources:
+      cache:
+        cachecontrol:
+          # 静态资源强制 revalidate:HTML 永远拿最新(资源本体带 ?v= 版本号,未变时 304)
+          no-cache: true
   datasource:
     url: jdbc:postgresql://${PG_HOST:localhost}:${PG_PORT:5432}/${PG_DB:myagent}
     username: ${PG_USER:postgres}
