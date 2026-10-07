@@ -141,3 +141,9 @@
 5. 交付默认配置:DeepSeek 端点 + Mock 开(演示即用);插真实 Key 在设置页热切换即可。
 
 运行状态:8070(工作区实例,myagent 库);交付物:dist/my-agent-0.1.0.zip。前端 v=16;静态资源 no-cache 头已由 StaticCacheConfig 统一设置(注意:测试期间发现侧栏多了「插件」入口,系并行会话添加,未改动)。
+
+## 2026-10-07(交付收尾轮:exe + GitHub 公开)
+
+1. **Windows exe**:jpackage app-image(dist/my-agent/ 含 my-agent.exe + 自带 JRE,约 240MB;zip 为 dist/my-agent-0.1.0-exe.zip)。exe 冒烟通过:配合同目录 config/application.yml(指向本机 PG/Redis)启动,数据与服务正常。无 WiX,未产 msi/exe 安装器,需要时再补。
+2. **GitHub**:my-agent 仓库(接管会话所建,此前私有)已推送本轮全部改动(commit 09841aa,含并行会话的 plugin 模块),并已转 **PUBLIC**:https://github.com/2395115107-stack/my-agent 。转公开前做过敏感扫描(无真实 Key/口令泄漏,仅文档中的本地默认口令示例)。dist/ 已加入 .gitignore(二进制 240MB 不进库)。
+3. 测试:全量 28 个用例(SettingsControllerTest 7 + Plugin 系列)全绿。
